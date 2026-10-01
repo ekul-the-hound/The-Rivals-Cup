@@ -28,6 +28,8 @@ Then: `pytest`, `ruff check .`, `python -m scripts.compliance_audit`.
 
 ## Setup guides (read in this order)
 
+**Windows user? Use [`docs/windows_powershell_guide.md`](docs/windows_powershell_guide.md)** for the PowerShell version of every command below (the other guides show macOS/zsh).
+
 1. [`docs/local_setup_guide.md`](docs/local_setup_guide.md): venv, install, `.env`, mock demo, tests
 2. [`docs/supabase_setup.md`](docs/supabase_setup.md): free Supabase project, keys, CLI, migrations, RLS checks, seed
 3. [`docs/data_provider_setup.md`](docs/data_provider_setup.md): SEC EDGAR, FRED, Yahoo, Google News RSS, Wikipedia

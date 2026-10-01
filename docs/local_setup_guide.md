@@ -16,9 +16,8 @@ How the guides fit together (each part is independent, do them in this order):
 | **D. Public remote MCP / Claude Web** | Claude Web can read your research data | Public HTTPS host, Supabase OAuth | `dashboard_and_mcp_runbook.md` |
 | **E. GitHub** | Version control and backup | GitHub login | `github_workflow.md` |
 
-> **Windows users:** the repository README keeps a PowerShell section. Everything below is
-> macOS/zsh. In PowerShell, activate with `.\.venv\Scripts\Activate.ps1` and set environment
-> variables with `$env:NAME="value"`.
+> **Windows users:** use `docs/windows_powershell_guide.md` for the PowerShell version of every
+> command in these guides. The steps and expected results are the same.
 
 ---
 
