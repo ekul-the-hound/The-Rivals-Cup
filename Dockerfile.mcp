@@ -1,0 +1,11 @@
+# Read-only MCP server only (app.mcp). Does not run the REST/admin API or any ingestion job.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /srv
+COPY pyproject.toml ./
+COPY app ./app
+RUN pip install --no-cache-dir . && useradd -r -u 10001 mcp
+USER mcp
+EXPOSE 8080
+# TLS is terminated by the platform/proxy; --proxy-headers trusts X-Forwarded-* from it.
+CMD ["uvicorn", "app.mcp.server:get_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -1,0 +1,48 @@
+# --- secrets & local environment (NEVER commit) ---
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*credentials*.json
+*service-account*.json
+*service_role*
+client_secret*.json
+*.pem
+*.key
+# local tunnel credentials / configs (cloudflared, ngrok)
+.cloudflared/
+cert.pem
+ngrok.yml
+*.trycloudflare.*
+
+# --- Supabase local state ---
+.supabase/
+supabase/.temp/
+supabase/.branches/
+
+# --- Python / tooling caches ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.cache/
+
+# --- local data, logs, scratch ---
+*.sqlite
+*.sqlite3
+*.db
+logs/
+*.log
+data/generated/
+tmp/
+node_modules/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

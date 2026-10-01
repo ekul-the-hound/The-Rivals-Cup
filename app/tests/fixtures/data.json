@@ -1,0 +1,25 @@
+{
+  "system_control_state": [{"id": 1, "mode": "PAUSED", "signal_sending_enabled": false, "provider_ingestion_enabled": false, "reason": "initial default", "updated_at": "2026-10-01T12:00:00Z"}],
+  "securities": [{"id": "00000000-0000-0000-0000-0000000000a1", "ticker": "KO"}, {"id": "00000000-0000-0000-0000-0000000000a2", "ticker": "PEP"}],
+  "peer_pairs": [
+    {"id": "00000000-0000-0000-0000-0000000000b1", "name": "KO / PEP", "status": "CANDIDATE"},
+    {"id": "00000000-0000-0000-0000-0000000000b2", "name": "HD / LOW", "status": "CANDIDATE"},
+    {"id": "00000000-0000-0000-0000-0000000000b3", "name": "V / MA", "status": "ACTIVE_MANUALLY"}
+  ],
+  "market_bars": [],
+  "research_packets": [{"id": "00000000-0000-0000-0000-0000000000c1", "pair_id": "00000000-0000-0000-0000-0000000000b1", "as_of": "2026-09-30T20:00:00Z"}],
+  "pair_rankings": [],
+  "provider_run_logs": [{"id": "00000000-0000-0000-0000-0000000000d1", "provider": "mock", "job_name": "bars", "status": "SUCCEEDED", "started_at": "2026-09-30T19:00:00Z"}],
+  "data_quality_issues": [
+    {"id": "00000000-0000-0000-0000-0000000000e1", "severity": "WARNING", "issue_type": "STALE_BARS", "description": "KO bars 3 days old", "detected_at": "2026-10-01T10:00:00Z", "resolved_at": null},
+    {"id": "00000000-0000-0000-0000-0000000000e2", "severity": "ERROR", "issue_type": "MISSING_QUOTE", "detected_at": "2026-10-01T11:00:00Z", "resolved_at": null},
+    {"id": "00000000-0000-0000-0000-0000000000e3", "severity": "INFO", "issue_type": "OLD", "detected_at": "2026-09-01T11:00:00Z", "resolved_at": "2026-09-02T11:00:00Z"}
+  ],
+  "manual_portfolios": [{"id": "00000000-0000-0000-0000-0000000000f1", "name": "Rival Cup Main", "starting_cash_usd": 100000}],
+  "manual_positions": [
+    {"id": "00000000-0000-0000-0000-000000000101", "portfolio_id": "00000000-0000-0000-0000-0000000000f1", "security_id": "00000000-0000-0000-0000-0000000000a1", "side": "LONG", "quantity": 100, "avg_entry_price": 60.0, "is_open": true},
+    {"id": "00000000-0000-0000-0000-000000000102", "portfolio_id": "00000000-0000-0000-0000-0000000000f1", "security_id": "00000000-0000-0000-0000-0000000000a2", "side": "SHORT", "quantity": 40, "avg_entry_price": 150.0, "is_open": true}
+  ],
+  "manual_trades": [],
+  "score_snapshots": []
+}
