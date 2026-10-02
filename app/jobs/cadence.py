@@ -21,6 +21,14 @@ PROFILES: dict[str, list[str]] = {
         "refresh_news", "build_weekly_event_blackout_list", "refresh_data_quality",
     ],
 }  # fmt: skip
+# Target-sector universe (docs/universe_builder.md). Run repeatedly until classification and market
+# data cover the whole list: each run handles one rate-limited batch and resumes where it stopped.
+PROFILES["universe"] = [
+    "refresh_us_listed_symbol_universe",
+    "classify_target_sectors",
+    "refresh_universe_market_data",
+    "build_target_sector_universe_views",
+]
 PROFILES["full"] = PROFILES["sunday"]
 
 SCHEDULE_HINT = {"daily": "Mon-Fri 15:45 CT", "sunday": "Sun 18:00 CT", "monday": "Mon 07:30 CT"}

@@ -28,6 +28,7 @@ class InMemoryDB:
         gte=None,
         lte=None,
         in_=None,
+        offset=None,
     ):
         rows = [dict(r) for r in self.data.get(table, [])]
         for k, v in (eq or {}).items():
@@ -43,6 +44,8 @@ class InMemoryDB:
             rows = [r for r in rows if str(r.get(k)) in allowed]
         if order:
             rows.sort(key=lambda r: (r.get(order) is None, r.get(order)), reverse=desc)
+        if offset:
+            rows = rows[offset:]
         return rows[:limit] if limit else rows
 
     def count(self, table):

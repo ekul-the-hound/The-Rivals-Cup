@@ -21,8 +21,9 @@ PAGES = [
     ("screens/p7_quality.py", "7. Data quality"),
     ("screens/p8_mcp.py", "8. MCP status / audit"),
     ("screens/p9_compliance.py", "9. Compliance status"),
+    ("screens/p10_target_universe.py", "10. Target-sector universe"),
 ]
 
 st.set_page_config(page_title="WSR research (manual)", layout="wide")
-nav = st.navigation([st.Page(p, title=t, url_path=p.split("/")[1][:2]) for p, t in PAGES])
+nav = st.navigation([st.Page(p, title=t, url_path=p.split("/")[1].split("_")[0]) for p, t in PAGES])
 nav.run()

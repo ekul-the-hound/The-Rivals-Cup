@@ -528,3 +528,100 @@ def page_compliance() -> None:
     else:
         st.error(f"FAIL: {len(rep.findings)} finding(s)")
     st.code(rep.render())
+
+
+def page_target_universe() -> None:
+    from app.models.universe import DISCLAIMER, TARGET_SECTORS
+    from app.services.universe.export import export_records, render_csv
+    from app.services.universe.repo import filter_rows, load_universe
+    from app.services.universe.summary import summarize
+
+    page_header("10. Target-sector universe")
+    st.info(DISCLAIMER)
+    rows = load_universe(get_db())
+    if not rows:
+        st.warning(
+            "security_master is empty. Run: python -m scripts.refresh_weekly_research --profile universe"
+        )
+        return
+    s = summarize(rows)
+    c = st.columns(4)
+    c[0].metric("Listings loaded", s["total_listings"])
+    c[1].metric("In target sectors", s["all_target_sector_listings"])
+    c[2].metric("Pair-research eligible", s["pair_research_eligible"])
+    c[3].metric("Manual review", s["manual_review"])
+    st.caption(
+        f"Listing directory as of {s['listing_verified_latest']} | views built {s['views_built_latest']}"
+    )
+
+    st.subheader("Summary by sector")
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "sector": list(TARGET_SECTORS),
+                "all target listings": [s["by_sector"].get(x, 0) for x in TARGET_SECTORS],
+                "pair-research eligible": [
+                    s["pair_eligible_by_sector"].get(x, 0) for x in TARGET_SECTORS
+                ],
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Counts by exchange")
+        st.dataframe(pd.Series(s["by_exchange"], name="count").to_frame(), use_container_width=True)
+        st.subheader("Counts by security type (all listings)")
+        st.dataframe(
+            pd.Series(s["by_security_type_all_listings"], name="count").to_frame(),
+            use_container_width=True,
+        )
+    with right:
+        st.subheader("Why securities were excluded")
+        st.dataframe(
+            pd.Series(s["excluded_primary_reason"], name="count").to_frame(),
+            use_container_width=True,
+        )
+        st.caption("Pair-research exclusions among target-sector names:")
+        st.dataframe(
+            pd.Series(s["pair_research_exclusion_reasons"], name="count").to_frame(),
+            use_container_width=True,
+        )
+        st.subheader("Liquidity distribution (20d $ volume)")
+        st.dataframe(
+            pd.Series(s["liquidity_distribution"], name="count").to_frame(),
+            use_container_width=True,
+        )
+
+    st.subheader("Manual-review queue")
+    queue = filter_rows(rows, "manual_review")
+    if queue:
+        st.dataframe(
+            pd.DataFrame(queue)[
+                ["ticker", "company_name", "exchange", "sector", "security_type", "review_reasons"]
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.write("Nothing waiting for review.")
+
+    st.subheader("Browse / export")
+    view = st.selectbox("View", ["all", "pair_research", "manual_review"])
+    sector = st.selectbox("Sector", ["(all)", *TARGET_SECTORS])
+    picked = filter_rows(rows, view, sector=None if sector == "(all)" else sector)
+    recs = export_records(picked, utcnow())
+    st.write(f"{len(recs)} records")
+    if recs:
+        st.dataframe(
+            pd.DataFrame(recs).drop(columns=["disclaimer"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+    st.download_button(
+        "Export CSV (includes flags, provenance, disclaimer)",
+        render_csv(recs),
+        file_name="us_target_sector_universe.csv",
+        mime="text/csv",
+    )

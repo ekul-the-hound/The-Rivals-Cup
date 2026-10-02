@@ -43,7 +43,8 @@ def test_all_jobs_registered_and_profiles_valid():
     assert set(JOBS) == {
         "refresh_universe", "refresh_daily_prices", "refresh_market_context", "refresh_macro_context",
         "refresh_sec_filings", "refresh_corporate_catalysts", "refresh_news", "refresh_data_quality",
-        "build_weekly_event_blackout_list",
+        "build_weekly_event_blackout_list", "refresh_us_listed_symbol_universe",
+        "classify_target_sectors", "refresh_universe_market_data", "build_target_sector_universe_views",
     }  # fmt: skip
     for names in PROFILES.values():
         assert set(names) <= set(JOBS)

@@ -38,6 +38,8 @@ Then: `pytest`, `ruff check .`, `python -m scripts.compliance_audit`.
 6. [`docs/troubleshooting.md`](docs/troubleshooting.md): fixes, logs, safe resets
 7. [`docs/github_workflow.md`](docs/github_workflow.md): auth, pre-commit secret checks, push
 
+8. [`docs/universe_builder.md`](docs/universe_builder.md): refreshable U.S.-listed Health Care / Industrials / Financials / Utilities / Real Estate research universe ([`docs/data_sources.md`](docs/data_sources.md) lists every source URL)
+
 Also: `docs/manual_monday_workflow.md`, `docs/score_methodology.md`, `docs/option_a_peer_pair_strategy.md`,
 `docs/data_providers.md`, `docs/mcp_*.md`, `docs/competition_compliance.md`.
 
@@ -54,6 +56,10 @@ supabase/   migrations (schema, RLS, seed), functions (reserved for the single M
 docs/       compliance, Supabase setup, architecture / MCP decision
 scripts/    dev helpers + check_no_execution.py (static guard)
 ```
+
+## Target-sector universe
+
+`python -m scripts.refresh_weekly_research --profile universe` then `python -m scripts.export_target_sector_universe --format csv --output data/exports/us_target_sector_universe.csv`. It is a research list only: it does not confirm WSR/Trader View lets you trade a symbol, so verify manually before any trade. See `docs/universe_builder.md`.
 
 ## Endpoints
 

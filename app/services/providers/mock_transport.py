@@ -16,6 +16,7 @@ CIKS = {
     "KO": 21344, "PEP": 77476, "HD": 354950, "LOW": 60667, "V": 1403161, "MA": 1141391,
     "XOM": 34088, "CVX": 93410, "JPM": 19617, "BAC": 70858, "UPS": 1090727, "FDX": 1048911,
     "MRK": 310158, "PFE": 78003, "AMD": 2488, "INTC": 50863,
+    "MHLT": 9000001, "MIND": 9000002, "MBNK": 9000003, "MUTL": 9000004, "MREI": 9000005,
 }  # fmt: skip
 SECTOR_OF = {
     **dict.fromkeys(["KO", "PEP", "XLP"], "staples"), **dict.fromkeys(["HD", "LOW", "XLY"], "disc"),
@@ -23,6 +24,50 @@ SECTOR_OF = {
     **dict.fromkeys(["UPS", "FDX", "XLI"], "ind"), **dict.fromkeys(["MRK", "PFE", "XLV"], "health"),
     **dict.fromkeys(["AMD", "INTC", "XLK"], "tech"),
 }  # fmt: skip
+
+# ---- synthetic Nasdaq Trader directories (every symbol is fictional) ----
+NASDAQ_LISTED_MOCK = """Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
+MHLT|Mockhealth Therapeutics, Inc. - Common Stock|Q|N|N|100|N|N
+BADH|Mockbadquote Pharma, Inc. - Common Stock|Q|N|N|100|N|N
+MDEF|Mockdeficient Bio Inc. - Common Stock|S|N|D|100|N|N
+MIND|Mockindustrial Machines Corp. - Common Stock|Q|N|N|100|N|N
+MLOW|Mocklowvolume Industries Inc. - Common Stock|S|N|N|100|N|N
+MBNK|Mockbank Financial Corp. - Common Stock|G|N|N|100|N|N
+MSPC|Mock Acquisition Corp. - Common Stock|G|N|N|100|N|N
+MUNT|Mock Acquisition Corp. - Units|G|N|N|100|N|N
+MWRT|Mockbank Financial Corp. - Warrants|G|N|N|100|N|N
+MRGT|Mockhealth Therapeutics, Inc. - Rights|Q|N|N|100|N|N
+MTEC|Mocktech Software Inc. - Common Stock|Q|N|N|100|N|N
+MUNK|Mockmystery Holdings - Common Stock|Q|N|N|100|N|N
+MNEW|Mockunknown Thing Holdings|Q|N|N|100|N|N
+MTST|Mock Test Issue Inc. - Common Stock|Q|Y|N|100|N|N
+MHET|Mock Healthcare Index ETF|G|N|N|100|Y|N
+MLEV|Mock Daily 3x Bull Shares|G|N|N|100|Y|N
+File Creation Time: 10012026 21:30|||||||
+"""
+OTHER_LISTED_MOCK = """ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol
+MUTL|Mockpower Utilities Inc. Common Stock|N|MUTL|N|100|N|MUTL
+MREI|Mockproperties Realty Trust, Inc. Common Stock|N|MREI|N|100|N|MREI
+MADR|Mockpharma plc American Depositary Shares|N|MADR|N|100|N|MADR
+MFIN|Mockfinancial Group Common Stock|A|MFIN|N|100|N|MFIN
+MBNK$A|Mockbank Financial Corp. Depositary Shares Series A Preferred|N|MBNK-A|N|100|N|MBNK$A
+MFND|Mock Income Fund Inc.|N|MFND|N|100|N|MFND
+MXLF|Mock Financial Select ETF|P|MXLF|Y|100|N|MXLF
+File Creation Time: 10012026 21:30|||||||
+"""
+# mock Yahoo sector labels (symbols not listed here return "Mock Sector"); MUNK is refused outright
+MOCK_PROFILES = {
+    "MHLT": ("Healthcare", "Biotechnology"), "BADH": ("Healthcare", "Biotechnology"),
+    "MDEF": ("Healthcare", "Biotechnology"), "MADR": ("Healthcare", "Drug Manufacturers - General"),
+    "MIND": ("Industrials", "Specialty Industrial Machinery"), "MLOW": ("Industrials", "Metal Fabrication"),
+    "MBNK": ("Financial Services", "Banks - Regional"), "MFIN": ("Financial Services", "Insurance - Diversified"),
+    "MSPC": ("Financial Services", "Shell Companies"), "MTEC": ("Technology", "Software - Application"),
+    "MUTL": ("Utilities", "Utilities - Regulated Electric"), "MREI": ("Real Estate", "REIT - Industrial"),
+}  # fmt: skip
+LOW_VOLUME = {"MLOW"}
+MOCK_SIC = {9000001: (2834, "Pharmaceutical Preparations"), 9000002: (3560, "General Industrial Machinery"),
+            9000003: (6022, "State Commercial Banks"), 9000004: (4911, "Electric Services"),
+            9000005: (6798, "Real Estate Investment Trusts")}  # fmt: skip
 
 # ticker -> list[(form, days_ago, items, body)]
 FILINGS = {
@@ -92,6 +137,10 @@ class MockWorld:
                     for i, (t, c) in enumerate(CIKS.items())
                 }
             )
+        if host == "www.nasdaqtrader.com" and path.endswith("/nasdaqlisted.txt"):
+            return httpx.Response(200, text=NASDAQ_LISTED_MOCK)
+        if host == "www.nasdaqtrader.com" and path.endswith("/otherlisted.txt"):
+            return httpx.Response(200, text=OTHER_LISTED_MOCK)
         if host == "data.sec.gov":
             return self._json(self._submissions(int(re.search(r"CIK(\d+)", path).group(1))))
         if host == "www.sec.gov" and path.startswith("/Archives/"):
@@ -101,6 +150,9 @@ class MockWorld:
         if host == "query1.finance.yahoo.com":
             sym = unquote(path.rsplit("/", 1)[-1])
             if "quoteSummary" in path:
+                if sym == "MUNK":
+                    return httpx.Response(404, text="mock: no profile")
+                sector, industry = MOCK_PROFILES.get(sym, ("Mock Sector", "Mock Industry"))
                 return self._json(
                     {
                         "quoteSummary": {
@@ -108,8 +160,8 @@ class MockWorld:
                                 {
                                     "price": {"marketCap": {"raw": 2.5e11}},
                                     "summaryProfile": {
-                                        "sector": "Mock Sector",
-                                        "industry": "Mock Industry",
+                                        "sector": sector,
+                                        "industry": industry,
                                     },
                                 }
                             ]
@@ -144,7 +196,8 @@ class MockWorld:
     def _submissions(self, cik: int) -> dict:
         ticker = next((t for t, c in CIKS.items() if c == cik), None)
         fs = list(self._filings_for(ticker)) if ticker else []
-        return {"cik": str(cik), "filings": {"recent": {
+        sic, desc = MOCK_SIC.get(cik, (None, None))
+        return {"cik": str(cik), "sic": str(sic) if sic else "", "sicDescription": desc or "", "filings": {"recent": {
             "accessionNumber": [f["acc"] for f in fs], "filingDate": [f["date"] for f in fs],
             "reportDate": ["" for _ in fs], "form": [f["form"] for f in fs],
             "primaryDocument": [f["doc"] for f in fs], "items": [f["items"] for f in fs],
@@ -205,7 +258,7 @@ class MockWorld:
         return self._json({"chart": {"error": None, "result": [{
             "meta": {"symbol": sym, "gmtoffset": -14400, "regularMarketPrice": round(last[4], 2), "regularMarketTime": ts[-1], "chartPreviousClose": round(bars[-2][4], 2)},
             "timestamp": ts,
-            "indicators": {"quote": [{"open": [round(b[1], 2) for b in bars], "high": [round(b[2], 2) for b in bars], "low": [round(b[3], 2) for b in bars], "close": [round(b[4], 2) for b in bars], "volume": [b[5] for b in bars]}], "adjclose": [{"adjclose": [round(b[4], 2) for b in bars]}]}}]}})  # fmt: skip
+            "indicators": {"quote": [{"open": [round(b[1], 2) for b in bars], "high": [round(b[2], 2) for b in bars], "low": [round(b[3], 2) for b in bars], "close": [round(b[4], 2) for b in bars], "volume": [b[5] // 1000 if sym in LOW_VOLUME else b[5] for b in bars]}], "adjclose": [{"adjclose": [round(b[4], 2) for b in bars]}]}}]}})  # fmt: skip
 
     # ---- Google News ----
     def _news(self, query: str) -> httpx.Response:

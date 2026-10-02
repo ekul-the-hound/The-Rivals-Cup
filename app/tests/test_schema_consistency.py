@@ -43,6 +43,9 @@ EXPECTED_TABLES = {
     "weekly_portfolios",
     "pair_manual_decisions",
     "manual_pair_records",
+    "security_master",
+    "security_master_view_state",
+    "security_master_audit",
     "dividend_events",
 }
 

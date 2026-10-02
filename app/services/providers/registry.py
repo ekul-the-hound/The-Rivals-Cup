@@ -8,6 +8,7 @@ from app.config import Settings
 from app.services.providers.base import ProviderUnavailable
 from app.services.providers.fred import FredProvider
 from app.services.providers.google_news import GoogleNewsProvider
+from app.services.providers.nasdaq_trader import NasdaqTraderProvider
 from app.services.providers.sec import SecProvider
 from app.services.providers.wikipedia import WikipediaProvider
 from app.services.providers.yahoo import YahooProvider
@@ -20,6 +21,7 @@ class Providers:
     yahoo: YahooProvider | None = None
     news: GoogleNewsProvider | None = None
     wiki: WikipediaProvider | None = None
+    nasdaq: NasdaqTraderProvider | None = None
     unavailable: dict[str, str] = field(default_factory=dict)
 
     def require(self, name: str):
@@ -29,7 +31,9 @@ class Providers:
         return p
 
     def all(self):
-        return [p for p in (self.sec, self.fred, self.yahoo, self.news, self.wiki) if p]
+        return [
+            p for p in (self.sec, self.fred, self.yahoo, self.news, self.wiki, self.nasdaq) if p
+        ]
 
     def stats(self) -> dict[str, int]:
         t = {"http_requests": 0, "cache_hits": 0, "retries": 0}
@@ -61,6 +65,7 @@ def build_providers(
         "yahoo": lambda: YahooProvider(ua, **kw),
         "news": lambda: GoogleNewsProvider(ua, **kw),
         "wiki": lambda: WikipediaProvider(ua, **kw),
+        "nasdaq": lambda: NasdaqTraderProvider(ua, **kw),
     }.items():
         try:
             setattr(out, attr, factory())

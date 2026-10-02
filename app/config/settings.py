@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     wsr_est_adv_pct_cap: float = 0.01  # ESTIMATE: max leg size as a fraction of 20d ADV (USD)
     default_leg_size_usd: float = 10000.0
 
+    # U.S.-listed target-sector universe (docs/universe_builder.md)
+    universe_classify_batch: int = (
+        4000  # sector lookups per run (SEC 8 req/s; Yahoo fallback 1 req/s)
+    )
+    universe_market_data_batch: int = 800  # Yahoo price lookups per run (1 request/second)
+    universe_reclassify_days: int = 30  # re-check Yahoo sector labels at most this often
+    universe_price_max_age_days: int = 5  # "current enough" daily quote, in calendar days
+    universe_min_adv_usd: float = 1_000_000.0  # pair-research liquidity floor (20d avg $ volume)
+    universe_min_price: float = 1.0
+    universe_allow_unverified_sector: bool = False  # explicitly allow UNVERIFIED sector labels
+    sector_mapping_adapter_enabled: bool = False  # DISABLED by default (CSV you supply)
+    sector_mapping_csv: str = ""
+
     # DEVELOPMENT ONLY bearer-token mode. See app/api/deps.py.
     dev_bearer_token: SecretStr | None = None
 

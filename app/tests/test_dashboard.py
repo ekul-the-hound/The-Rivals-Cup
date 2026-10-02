@@ -8,11 +8,12 @@ from streamlit.testing.v1 import AppTest
 from app.dashboard.common import BANNER
 from app.dashboard.views import read_audit_lines
 
-SCREENS = sorted((Path(__file__).resolve().parents[1] / "dashboard" / "screens").glob("p*.py"))
+SCREENS_DIR = Path(__file__).resolve().parents[1] / "dashboard" / "screens"
+SCREENS = sorted(SCREENS_DIR.glob("p*.py"))
 
 
-def test_nine_pages():
-    assert len(SCREENS) == 9
+def test_ten_pages():
+    assert len(SCREENS) == 10
 
 
 def test_banner_text_is_exact():
@@ -30,7 +31,7 @@ def test_page_renders_with_banner(path):
 
 
 def test_journal_requires_confirmation_checkbox():
-    at = AppTest.from_file(str(SCREENS[4]), default_timeout=120).run()
+    at = AppTest.from_file(str(SCREENS_DIR / "p5_journal.py"), default_timeout=120).run()
     assert not at.exception
     labels = [c.label for c in at.checkbox]
     assert any("ALREADY entered" in x for x in labels)

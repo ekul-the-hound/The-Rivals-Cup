@@ -35,6 +35,7 @@ def get_db():
         ctx = build_context(mock=True)
         try:
             await run_jobs(ctx, PROFILES["sunday"])
+            await run_jobs(ctx, PROFILES["universe"])
         finally:
             await ctx.providers.aclose()
         return ctx.db

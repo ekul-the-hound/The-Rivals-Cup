@@ -24,6 +24,11 @@ class CikInfo(BaseModel):
     title: str
 
 
+class SicInfo(BaseModel):
+    sic: int | None = None
+    description: str | None = None
+
+
 class FilingMeta(BaseModel):
     accession_number: str
     form_type: str
@@ -153,6 +158,17 @@ class SecProvider:
             v["ticker"].upper(): CikInfo(cik=int(v["cik_str"]), title=v["title"])
             for v in data.values()
         }
+
+    async def sic_info(self, cik: int) -> SicInfo:
+        """SEC Standard Industrial Classification code from the issuer's submissions record."""
+        data = await self.http.get_json(
+            f"https://data.sec.gov/submissions/CIK{cik:010d}.json", ttl=30 * 86400
+        )
+        raw = data.get("sic")
+        return SicInfo(
+            sic=int(raw) if str(raw or "").isdigit() else None,
+            description=data.get("sicDescription") or None,
+        )
 
     async def recent_filings(
         self, cik: int, since: date, forms: tuple[str, ...] = FORMS

@@ -8,12 +8,25 @@ from app.jobs.market_context import refresh_market_context
 from app.jobs.news import refresh_news
 from app.jobs.prices import refresh_daily_prices
 from app.jobs.sec_filings import refresh_sec_filings
+from app.jobs.target_universe import (
+    build_target_sector_universe_views,
+    classify_target_sectors,
+    refresh_universe_market_data,
+    refresh_us_listed_symbol_universe,
+)
 from app.jobs.universe import refresh_universe
 from app.jobs.weekly_blackout import build_weekly_event_blackout_list
 from app.services.ingestion.runner import JobContext, JobResult, run_job
 
 JOBS = {
     "refresh_universe": ("sec_edgar+wikipedia+yahoo_finance", refresh_universe),
+    "refresh_us_listed_symbol_universe": (
+        "nasdaq_trader+sec_edgar",
+        refresh_us_listed_symbol_universe,
+    ),
+    "classify_target_sectors": ("yahoo_finance", classify_target_sectors),
+    "refresh_universe_market_data": ("yahoo_finance", refresh_universe_market_data),
+    "build_target_sector_universe_views": ("derived", build_target_sector_universe_views),
     "refresh_daily_prices": ("yahoo_finance", refresh_daily_prices),
     "refresh_market_context": ("derived", refresh_market_context),
     "refresh_macro_context": ("fred", refresh_macro_context),

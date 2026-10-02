@@ -67,6 +67,8 @@ def test_only_refresh_and_research_review_routes_are_non_get():
         ("/pairs/build-weekly-portfolio", "post"),
         ("/pairs/{pair_id}/manual-approve-for-review", "post"),
         ("/pairs/{pair_id}/manual-exclude", "post"),
+        ("/universe/{ticker}/manual-override", "post"),
+        ("/universe/{ticker}/manual-verify", "post"),
     }
 
 

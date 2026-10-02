@@ -10,6 +10,22 @@ from typing import Any, Protocol
 
 import httpx
 
+PAGE_SIZE = 1000  # PostgREST's default row cap
+
+
+def select_all(
+    store: "Store", table: str, order: str = "ticker", **filters: Any
+) -> list[dict[str, Any]]:
+    """Read every row (paging past the 1000-row cap). `order` must be a unique, stable column."""
+    out: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        page = store.select(table, order=order, limit=PAGE_SIZE, offset=offset, **filters)
+        out.extend(page)
+        if len(page) < PAGE_SIZE:
+            return out
+        offset += PAGE_SIZE
+
 
 def with_retry(call: Callable[[], Any], attempts: int = 3, delay: float = 0.5) -> Any:
     """Retry a read once or twice on a dropped connection (e.g. an idle HTTP/2 link the server closed).
@@ -39,6 +55,7 @@ class Store(Protocol):
         gte: dict[str, Any] | None = None,
         lte: dict[str, Any] | None = None,
         in_: dict[str, list[Any]] | None = None,
+        offset: int | None = None,
     ) -> list[dict[str, Any]]: ...
 
     def count(self, table: str) -> int: ...
@@ -63,6 +80,7 @@ class SupabaseStore:
         gte: dict[str, Any] | None = None,
         lte: dict[str, Any] | None = None,
         in_: dict[str, list[Any]] | None = None,
+        offset: int | None = None,
     ) -> list[dict[str, Any]]:
         q = self._c.table(table).select(columns)
         for k, v in (gte or {}).items():
@@ -77,7 +95,9 @@ class SupabaseStore:
             q = q.is_(k, "null")
         if order:
             q = q.order(order, desc=desc)
-        if limit:
+        if offset is not None:
+            q = q.range(offset, offset + (limit or PAGE_SIZE) - 1)
+        elif limit:
             q = q.limit(limit)
         # PostgREST caps responses (1000 rows by default); callers needing more must pass limit.
         return list(with_retry(q.execute).data or [])
