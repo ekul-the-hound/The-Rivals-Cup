@@ -1,0 +1,16 @@
+sector,rank,long,short,score,corr_60d,spread_20d,spread_z,same_industry,est_cap_usd
+Health Care,1,BIIB,BMY,40.8,0.645,0.0923,1.22,False,2339103.0
+Health Care,2,PFE,AMGN,30.8,0.622,0.0493,0.64,False,8962956.0
+Health Care,3,PFE,MRK,26.2,0.635,0.015,0.2,False,8962956.0
+Industrials,1,ADP,BR,39.0,0.72,0.0342,0.52,False,1733895.0
+Financials,1,JPM,BAC,70.0,0.816,0.0726,2.13,False,22524510.0
+Financials,2,AJG,BRO,66.7,0.898,0.0215,0.52,True,1480301.0
+Financials,3,ARES,BX,62.7,0.849,0.0329,0.59,True,2907921.0
+Financials,4,ACGL,ALL,57.6,0.674,0.0945,1.52,True,4383740.0
+Financials,5,BLK,BX,55.8,0.616,0.146,1.81,True,5319756.0
+Financials,6,V,MA,55.5,0.877,0.0158,0.59,False,15502757.0
+Financials,7,BEN,ARES,54.0,0.61,0.1413,1.73,True,1316711.0
+Financials,8,AJG,AON,51.2,0.723,0.0449,0.66,True,3538386.0
+Utilities,1,AEP,AEE,64.1,0.899,0.0214,1.07,False,1929350.0
+Utilities,2,AEP,ATO,42.3,0.683,0.0365,1.05,False,1675858.0
+Utilities,3,AEE,ATO,38.9,0.723,0.015,0.49,False,1675858.0
