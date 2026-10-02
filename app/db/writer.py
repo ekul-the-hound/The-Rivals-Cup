@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any, Protocol
 from uuid import UUID
 
-from app.db.store import Store, SupabaseStore
+from app.db.store import Store, SupabaseStore, with_retry
 
 
 class DB(Store, Protocol):
@@ -56,10 +56,14 @@ class SupabaseDB(SupabaseStore):
             return 0
         payload = [jsonable(r) for r in rows]
         for i in range(0, len(payload), 500):
-            self._c.table(table).upsert(
-                payload[i : i + 500],
-                on_conflict=on_conflict,
-                ignore_duplicates=ignore_duplicates,
-                default_to_null=False,  # don't null columns omitted from the payload
-            ).execute()
+            with_retry(  # upserts are idempotent, so retrying a dropped connection is safe
+                self._c.table(table)
+                .upsert(
+                    payload[i : i + 500],
+                    on_conflict=on_conflict,
+                    ignore_duplicates=ignore_duplicates,
+                    default_to_null=False,  # don't null columns omitted from the payload
+                )
+                .execute
+            )
         return len(payload)

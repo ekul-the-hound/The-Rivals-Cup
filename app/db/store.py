@@ -4,7 +4,25 @@ The `Store` protocol exposes only select/count. There is deliberately no insert/
 here; admin/manual-entry write endpoints will live in a separate, explicit module later.
 """
 
+import time
+from collections.abc import Callable
 from typing import Any, Protocol
+
+import httpx
+
+
+def with_retry(call: Callable[[], Any], attempts: int = 3, delay: float = 0.5) -> Any:
+    """Retry a read once or twice on a dropped connection (e.g. an idle HTTP/2 link the server closed).
+
+    Only transport errors are retried; HTTP/API errors are raised immediately.
+    """
+    for i in range(attempts):
+        try:
+            return call()
+        except (httpx.TransportError, httpx.TimeoutException):
+            if i == attempts - 1:
+                raise
+            time.sleep(delay * (i + 1))
 
 
 class Store(Protocol):
@@ -62,10 +80,10 @@ class SupabaseStore:
         if limit:
             q = q.limit(limit)
         # PostgREST caps responses (1000 rows by default); callers needing more must pass limit.
-        return list(q.execute().data or [])
+        return list(with_retry(q.execute).data or [])
 
     def count(self, table: str) -> int:
-        res = self._c.table(table).select("id", count="exact").limit(1).execute()
+        res = with_retry(self._c.table(table).select("id", count="exact").limit(1).execute)
         return int(res.count or 0)
 
 

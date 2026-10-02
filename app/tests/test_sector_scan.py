@@ -130,3 +130,31 @@ def test_event_blackout_excludes_stock_and_illiquid_filter():
     assert all("AAA" not in (p.long, p.short) for p in s.pairs)
     big = scan_sectors(db, ["Utilities"], now, week, ScanParams(leg_usd=10**9))
     assert big.sectors[0].pairs == [] and big.sectors[0].pairs_rejected["illiquid"] > 0
+
+
+def test_with_retry_retries_transport_errors_only():
+    import httpx
+
+    from app.db.store import with_retry
+
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise httpx.RemoteProtocolError("Server disconnected")
+        return "ok"
+
+    assert with_retry(flaky, delay=0) == "ok" and calls["n"] == 3
+
+    def bad():
+        raise ValueError("api error")
+
+    with pytest.raises(ValueError):
+        with_retry(bad, delay=0)
+
+    def always():
+        raise httpx.RemoteProtocolError("down")
+
+    with pytest.raises(httpx.RemoteProtocolError):
+        with_retry(always, delay=0)

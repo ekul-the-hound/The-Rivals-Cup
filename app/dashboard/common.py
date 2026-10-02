@@ -21,7 +21,7 @@ def mode() -> str:
     return os.environ.get("DASHBOARD_MODE", "mock").lower()
 
 
-@st.cache_resource(show_spinner="Loading data...")
+@st.cache_resource(show_spinner="Loading data...", ttl=600)  # refresh the connection every 10 min
 def get_db():
     """mock (default): offline synthetic data in memory. supabase: your project via .env (local only)."""
     from scripts._runtime import build_context
