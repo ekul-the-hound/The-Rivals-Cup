@@ -22,6 +22,7 @@ PAGES = [
     ("screens/p8_mcp.py", "8. MCP status / audit"),
     ("screens/p9_compliance.py", "9. Compliance status"),
     ("screens/p10_target_universe.py", "10. Target-sector universe"),
+    ("screens/p11_leaders_laggards.py", "11. Leaders & laggards"),
 ]
 
 st.set_page_config(page_title="WSR research (manual)", layout="wide")

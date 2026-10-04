@@ -28,6 +28,21 @@ class Settings(BaseSettings):
     wsr_est_adv_pct_cap: float = 0.01  # ESTIMATE: max leg size as a fraction of 20d ADV (USD)
     default_leg_size_usd: float = 10000.0
 
+    # Optional free-tier keys for the deep-dive data (adapters stay off until a key is set)
+    finnhub_api_key: SecretStr = SecretStr("")  # free: finnhub.io (60 calls/min)
+    alpha_vantage_api_key: SecretStr = SecretStr("")  # free: alphavantage.co (~25 calls/day)
+    alpha_vantage_daily_budget: int = 20  # calls per run kept under the free daily limit
+    deep_dive_tickers: str = ""  # comma-separated shortlist for per-company data
+    options_iv_enabled: bool = False  # Yahoo options chain: unofficial, best effort, off by default
+
+    @property
+    def deep_dive_list(self) -> list[str]:
+        return [
+            x.strip().upper().replace(".", "-")
+            for x in self.deep_dive_tickers.split(",")
+            if x.strip()
+        ]
+
     # U.S.-listed target-sector universe (docs/universe_builder.md)
     universe_classify_batch: int = (
         4000  # sector lookups per run (SEC 8 req/s; Yahoo fallback 1 req/s)
@@ -40,6 +55,21 @@ class Settings(BaseSettings):
     universe_allow_unverified_sector: bool = False  # explicitly allow UNVERIFIED sector labels
     sector_mapping_adapter_enabled: bool = False  # DISABLED by default (CSV you supply)
     sector_mapping_csv: str = ""
+
+    # Leaders & laggards (docs/leaders_laggards.md)
+    leaders_history_batch: int = 800  # Yahoo price-history downloads per run (1 request/second)
+    leaders_history_fresh_hours: int = 18  # skip tickers downloaded more recently than this
+    leaders_candidates_per_sector: int = (
+        8  # strongest names per sector whose competitors are mapped
+    )
+    leaders_min_adv_usd: float = 5_000_000.0  # both legs: 20d average $ volume floor
+    leaders_min_price: float = 5.0
+    leaders_min_history_bars: int = 120
+    leaders_min_competitors: int = 3
+    leaders_min_strength_gap: float = 15.0  # long strength minus short strength, in score points
+    leaders_portfolio_usd: float = 1_000_000.0  # WSR rounds start at $1,000,000 (estimate)
+    leaders_max_leg_pct: float = 15.0  # no single leg above this % of portfolio value
+    leaders_gross_target_pct: float = 100.0  # both legs together; the WSR gross limit is 200%
 
     # DEVELOPMENT ONLY bearer-token mode. See app/api/deps.py.
     dev_bearer_token: SecretStr | None = None

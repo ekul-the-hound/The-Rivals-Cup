@@ -40,6 +40,8 @@ Then: `pytest`, `ruff check .`, `python -m scripts.compliance_audit`.
 
 8. [`docs/universe_builder.md`](docs/universe_builder.md): refreshable U.S.-listed Health Care / Industrials / Financials / Utilities / Real Estate research universe ([`docs/data_sources.md`](docs/data_sources.md) lists every source URL)
 
+9. [`docs/deep_dive_data.md`](docs/deep_dive_data.md): short interest, earnings calendar, analyst ratings, transcripts, XBRL fundamentals, options IV and the per-company research packet
+
 Also: `docs/manual_monday_workflow.md`, `docs/score_methodology.md`, `docs/option_a_peer_pair_strategy.md`,
 `docs/data_providers.md`, `docs/mcp_*.md`, `docs/competition_compliance.md`.
 
@@ -56,6 +58,8 @@ supabase/   migrations (schema, RLS, seed), functions (reserved for the single M
 docs/       compliance, Supabase setup, architecture / MCP decision
 scripts/    dev helpers + check_no_execution.py (static guard)
 ```
+
+10. [`docs/leaders_laggards.md`](docs/leaders_laggards.md): the weekly long/short candidate book (strongest stock per sector as the long, its weakest competitor as the short) and [`docs/data_roadmap.md`](docs/data_roadmap.md) (free data sources still worth adding)
 
 ## Target-sector universe
 
@@ -138,3 +142,7 @@ and the app refuses to start with it when `APP_ENV=production`.
 - RLS is enabled **and forced** on all 33 tables; owner-only. `anon` has no privileges.
 - A NOLOGIN `mcp_readonly` Postgres role (SELECT only, `default_transaction_read_only`) is reserved for the future MCP endpoint.
 - `scripts/check_no_execution.py` (also a pytest) fails on order/automation/browser/Telegram code or dependencies.
+
+## Leaders & laggards (weekly long/short candidates)
+
+`python -m scripts.refresh_weekly_research --profile leaders` then `python -m scripts.leaders_laggards`. Research only: five longs and five shorts at most, one of each per sector, with reasons, flags and sizing estimates. You enter anything yourself in Trader View. See `docs/leaders_laggards.md`.

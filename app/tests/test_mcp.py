@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.config.clock import utcnow
 from app.mcp import protocol
 from app.mcp.auth import Principal
 from app.mcp.envelope import clean_text
@@ -21,6 +22,7 @@ from app.mcp.readonly import AsOfStore, ReadOnlyStore
 from app.mcp.registry import BY_NAME, TOOLS
 from app.mcp.resources import RESOURCES
 from app.mcp.server import create_app, validate_production_settings
+from app.services.pairs.blackout import scoring_week
 from app.tests.mock_world import base_data, fresh_db
 
 TOKEN = "dev-token-" + "x" * 40
@@ -80,13 +82,16 @@ def env_of(resp) -> dict:
     return json.loads(res["content"][0]["text"])
 
 
+# The mock world is seeded relative to the real clock, so derive the scoring week the same way
+# (a hard-coded week only passed during the week it was written).
+_WK = scoring_week(utcnow().date())
 VALID_ARGS = {
     "get_competition_rules_summary": {}, "get_market_dashboard": {}, "rank_sector_etfs": {"lookbacks": [1, 5, 20]},
     "get_peer_pair_candidates": {"limit": 5}, "get_peer_pair_packet": {"long_ticker": "KO", "short_ticker": "PEP"},
     "get_stock_research_packet": {"ticker": "KO"},
     "search_sec_filings": {"ticker": "KO", "filing_types": ["8-K", "10-Q", "4"], "start_date": "2026-08-01", "end_date": "2026-10-01"},
     "search_news": {"ticker": "KO"}, "get_liquidity_check": {"ticker": "KO", "intended_notional": 10000},
-    "get_portfolio_risk_context": {}, "get_weekly_event_blackout_list": {"week_start": "2026-09-28", "week_end": "2026-10-02"},
+    "get_portfolio_risk_context": {}, "get_weekly_event_blackout_list": {"week_start": _WK[0].isoformat(), "week_end": _WK[1].isoformat()},
     "get_manual_entry_checklist": {"long_ticker": "KO", "short_ticker": "PEP", "intended_long_notional": 10000, "intended_short_notional": 10000},
 }  # fmt: skip
 

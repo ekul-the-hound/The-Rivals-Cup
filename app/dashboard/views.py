@@ -625,3 +625,70 @@ def page_target_universe() -> None:
         file_name="us_target_sector_universe.csv",
         mime="text/csv",
     )
+
+
+def page_leaders_laggards() -> None:
+    from app.config.clock import utcnow
+    from app.services.leaders.book import BookParams, build_book
+
+    page_header("11. Leaders & laggards (weekly long/short candidates)")
+    st.info(
+        "Per sector: the strongest stock is the long candidate; the weakest of its direct "
+        "competitors is the short candidate. Research ranking only. You decide, and you enter "
+        "anything yourself in Trader View."
+    )
+    db = get_db()
+    rows = db.select("leader_laggard_books", order="scoring_week_start", desc=True, limit=1)
+    if not rows:
+        st.warning(
+            "No book yet. Run: python -m scripts.refresh_weekly_research --profile leaders "
+            "(after the universe profile)."
+        )
+        return
+    book = rows[0]["book"]
+    w = book["scoring_week"]
+    st.caption(f"Scoring week {w['start']} to {w['end']} | built {book['generated_at'][:19]} UTC")
+    bk = book["book"]
+    c = st.columns(4)
+    c[0].metric("Pairs", len(book["pairs"]))
+    c[1].metric("Gross (est.)", f"{bk['gross_pct_of_portfolio']}%")
+    c[2].metric("Net (est.)", f"{bk['net_pct_of_portfolio']}%")
+    c[3].metric("Est. net beta", bk["estimated_net_beta"])
+    table = []
+    for pr in book["pairs"]:
+        lg, sg, s_ = pr["long"], pr["short"], pr["stats"]
+        table.append(
+            {
+                "sector": pr["sector"],
+                "long": lg["ticker"],
+                "long strength": lg["strength"],
+                "short": sg["ticker"],
+                "short strength": sg["strength"],
+                "gap": s_["strength_gap"],
+                "60d spread %": s_["spread_60d"],
+                "60d corr": s_["correlation_60d"],
+                "competitor source": pr["competitor_source"],
+                "leg $ (est.)": pr["sizing_estimate"]["leg_usd_dollar_neutral"],
+            }
+        )
+    if table:
+        st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
+    for m in book["sectors_without_pair"]:
+        st.warning(f"{m['sector']}: no pair this week ({m['reason']})")
+    for pr in book["pairs"]:
+        with st.expander(
+            f"{pr['sector']}: long {pr['long']['ticker']} / short {pr['short']['ticker']}"
+        ):
+            st.write(f"**Long {pr['long']['ticker']}**: {pr['long']['why']}")
+            st.write(f"**Short {pr['short']['ticker']}**: {pr['short']['why']}")
+            st.caption("Alternates: " + str(pr["alternates"]))
+            for x in pr["warnings"]:
+                st.warning(x)
+    for x in book["warnings"]:
+        st.caption(x)
+    if st.button("Recompute from stored price history (read-only)"):
+        today = utcnow().date()
+        from app.config import get_settings
+
+        fresh = build_book(db, today, BookParams.from_settings(get_settings(), today))
+        st.json(fresh["book"])

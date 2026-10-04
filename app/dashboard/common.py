@@ -36,6 +36,15 @@ def get_db():
         try:
             await run_jobs(ctx, PROFILES["sunday"])
             await run_jobs(ctx, PROFILES["universe"])
+            ctx.settings = ctx.settings.model_copy(
+                update={
+                    "leaders_min_competitors": 1,
+                    "leaders_min_adv_usd": 1.0,
+                    "leaders_min_price": 1.0,
+                }
+            )
+            await run_jobs(ctx, PROFILES["deepmarket"])
+            await run_jobs(ctx, PROFILES["leaders"])
         finally:
             await ctx.providers.aclose()
         return ctx.db

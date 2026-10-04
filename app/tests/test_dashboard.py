@@ -12,8 +12,8 @@ SCREENS_DIR = Path(__file__).resolve().parents[1] / "dashboard" / "screens"
 SCREENS = sorted(SCREENS_DIR.glob("p*.py"))
 
 
-def test_ten_pages():
-    assert len(SCREENS) == 10
+def test_eleven_pages():
+    assert len(SCREENS) == 11
 
 
 def test_banner_text_is_exact():

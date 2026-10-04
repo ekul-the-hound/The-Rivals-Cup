@@ -14,6 +14,7 @@ from app.services.ingestion.runner import JobContext, JobResult
 from app.services.providers.base import ProviderError
 from app.services.universe.master import (
     UniverseWriteGuard,
+    cik_changes,
     inactive_rows,
     listing_rows,
     upsert_uniform,
@@ -48,6 +49,7 @@ async def refresh_us_listed_symbol_universe(ctx: JobContext) -> JobResult:
         except ProviderError as exc:
             warnings.append(f"sec cik map unavailable: {exc}")
     asof = file_time or ctx.now
+    warnings += cik_changes(existing, cik_map)[:20]
     rows, new = listing_rows(listings, existing, cik_map, asof)
     guard = _guard(ctx)
     written = upsert_uniform(guard, "security_master", rows, "ticker")

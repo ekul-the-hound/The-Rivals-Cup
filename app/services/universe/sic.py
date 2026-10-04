@@ -44,7 +44,11 @@ _RULES: list[tuple[int, int, str]] = [
     (3812, 3812, "INDUSTRIALS"),  # search, detection, navigation (aerospace / defense)
     (4000, 4299, "INDUSTRIALS"),  # railroads, transit, trucking
     (4400, 4599, "INDUSTRIALS"),  # water and air transportation
-    (4700, 4789, "INDUSTRIALS"),  # transportation services
+    (
+        4731,
+        4789,
+        "INDUSTRIALS",
+    ),  # freight and transportation services (4700-4729 travel agencies fall to OTHER)
     (4950, 4961, "INDUSTRIALS"),  # refuse, hazardous waste, environmental services
     (5063, 5063, "INDUSTRIALS"),  # electrical apparatus wholesale
     (5080, 5084, "INDUSTRIALS"),  # machinery and industrial equipment wholesale

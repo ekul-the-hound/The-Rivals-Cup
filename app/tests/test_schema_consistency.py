@@ -46,7 +46,18 @@ EXPECTED_TABLES = {
     "security_master",
     "security_master_view_state",
     "security_master_audit",
+    "short_interest",
+    "short_sale_volume_daily",
+    "earnings_calendar",
+    "analyst_recommendations",
+    "earnings_transcripts",
+    "company_fundamentals",
+    "sec_filing_feed",
+    "options_iv_snapshots",
     "dividend_events",
+    "universe_price_history",
+    "competitor_map",
+    "leader_laggard_books",
 }
 
 

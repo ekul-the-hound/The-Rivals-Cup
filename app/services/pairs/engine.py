@@ -15,6 +15,7 @@ import pandas as pd
 from app.models.enums import DataStatus
 from app.services.features.metrics import (
     adv_dollar,
+    align_to_common_end,
     beta,
     close_series,
     correlation,
@@ -116,6 +117,7 @@ class PeerPairEngine:
 
         a, b = inp.legs
         series = {id(leg): close_series(leg.bars) for leg in inp.legs}
+        series[id(a)], series[id(b)] = align_to_common_end(series[id(a)], series[id(b)])
         r_a, r_b = trailing_returns(series[id(a)]) if len(series[id(a)]) else dict.fromkeys((1, 5, 20, 60)), trailing_returns(series[id(b)]) if len(series[id(b)]) else dict.fromkeys((1, 5, 20, 60))  # fmt: skip
 
         def blend(r):

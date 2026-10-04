@@ -17,6 +17,7 @@ from app.config.clock import utcnow
 from app.db.store import Store
 from app.db.writer import DB
 from app.models.universe import DISCLAIMER, TARGET_SECTORS
+from app.services.deep_dive.packet import build_packet
 from app.services.universe.export import export_records, render_csv, render_json
 from app.services.universe.overrides import (
     InvalidChange,
@@ -117,6 +118,15 @@ def manual_review_queue(
     rows = filter_rows(load_universe(store), "manual_review")
     return {"total": len(rows), "disclaimer": DISCLAIMER,
             "records": export_records(rows[offset : offset + limit], utcnow())}  # fmt: skip
+
+
+@router.get("/{ticker}/research-packet")
+def research_packet(ticker: str, store: Store = Depends(get_store)) -> dict[str, Any]:
+    """All collected research data for one company, with gaps listed. Read-only."""
+    try:
+        return build_packet(store, ticker)
+    except KeyError as exc:
+        raise HTTPException(404, f"unknown ticker '{ticker}'") from exc
 
 
 @router.post("/{ticker}/manual-verify")

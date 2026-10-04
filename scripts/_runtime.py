@@ -19,6 +19,9 @@ def build_context(mock: bool, week_start=None) -> JobContext:
         settings = Settings(
             sec_user_agent="Mock Runner mock@example.com",
             fred_api_key="mock-key",
+            finnhub_api_key="mock-key",
+            alpha_vantage_api_key="mock-key",
+            options_iv_enabled=True,
             app_env="development",
         )
         world = MockWorld(now.astimezone(UTC).date())

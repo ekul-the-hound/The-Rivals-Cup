@@ -20,3 +20,17 @@ Other sources used by the rest of the system (FRED, Google News RSS, Wikipedia) 
 ## Settings (environment variables)
 
 `UNIVERSE_CLASSIFY_BATCH`, `UNIVERSE_MARKET_DATA_BATCH`, `UNIVERSE_RECLASSIFY_DAYS`, `UNIVERSE_PRICE_MAX_AGE_DAYS`, `UNIVERSE_MIN_ADV_USD`, `UNIVERSE_MIN_PRICE`, `UNIVERSE_ALLOW_UNVERIFIED_SECTOR`, `SECTOR_MAPPING_ADAPTER_ENABLED`, `SECTOR_MAPPING_CSV`. Defaults are in `app/config/settings.py` and `.env.example`.
+
+## Deep-dive sources (short interest, earnings, analysts, transcripts, fundamentals, options)
+
+| Source | Key | Exact URL | Used for | Limit |
+|---|---|---|---|---|
+| FINRA equity short interest | none | https://cdn.finra.org/equity/otcmarket/biweekly/shrt{YYYYMMDD}.csv | short interest, days to cover (twice a month) | 1 req/s |
+| FINRA daily short-sale volume | none | https://cdn.finra.org/equity/regsho/daily/CNMSshvol{YYYYMMDD}.txt | daily short volume ratio | 1 req/s |
+| SEC XBRL company facts | none (SEC user agent) | https://data.sec.gov/api/xbrl/companyfacts/CIK{cik10}.json | revenue, growth, net income, EPS, assets, equity, shares | 8 req/s |
+| SEC latest-filings RSS (Atom) | none (SEC user agent) | https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&output=atom | recent 8-K / 10-Q / 10-K filings for target-sector names | 8 req/s |
+| Alpha Vantage (free key) | `ALPHA_VANTAGE_API_KEY` | https://www.alphavantage.co/query?function=EARNINGS_CALENDAR and `EARNINGS_CALL_TRANSCRIPT` | market-wide earnings calendar (1 call); transcripts | about 25 calls/day |
+| Finnhub (free key) | `FINNHUB_API_KEY` | https://finnhub.io/api/v1/stock/recommendation and `/calendar/earnings` | analyst recommendation trends; calendar fallback | 60 calls/min |
+| Yahoo options chain (unofficial, off by default) | none | https://query1.finance.yahoo.com/v7/finance/options/{symbol} | at-the-money implied volatility, put/call volume | 1 req/s; often refused |
+
+Not used on purpose: Cboe delayed quotes (its page prohibits automated extraction), the Nasdaq screener endpoint (unofficial, duplicates the Nasdaq Trader files), and brokerage data APIs (the no-broker rule). Finnhub's price targets, estimates and transcripts are paid and are not called. Free-tier limits change, so check each provider's current terms.

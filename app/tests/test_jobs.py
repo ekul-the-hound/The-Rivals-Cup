@@ -45,6 +45,10 @@ def test_all_jobs_registered_and_profiles_valid():
         "refresh_sec_filings", "refresh_corporate_catalysts", "refresh_news", "refresh_data_quality",
         "build_weekly_event_blackout_list", "refresh_us_listed_symbol_universe",
         "classify_target_sectors", "refresh_universe_market_data", "build_target_sector_universe_views",
+        "refresh_short_interest", "refresh_short_sale_volume", "refresh_sec_filing_feed",
+        "refresh_earnings_calendar", "refresh_analyst_ratings", "refresh_earnings_transcripts",
+        "refresh_company_fundamentals", "refresh_options_iv",
+        "refresh_universe_price_history", "refresh_competitor_map", "build_leader_laggard_book",
     }  # fmt: skip
     for names in PROFILES.values():
         assert set(names) <= set(JOBS)

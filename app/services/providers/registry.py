@@ -5,7 +5,10 @@ from dataclasses import dataclass, field
 import httpx
 
 from app.config import Settings
+from app.services.providers.alpha_vantage import AlphaVantageProvider
 from app.services.providers.base import ProviderUnavailable
+from app.services.providers.finnhub import FinnhubProvider
+from app.services.providers.finra import FinraProvider
 from app.services.providers.fred import FredProvider
 from app.services.providers.google_news import GoogleNewsProvider
 from app.services.providers.nasdaq_trader import NasdaqTraderProvider
@@ -22,6 +25,9 @@ class Providers:
     news: GoogleNewsProvider | None = None
     wiki: WikipediaProvider | None = None
     nasdaq: NasdaqTraderProvider | None = None
+    finra: FinraProvider | None = None
+    finnhub: FinnhubProvider | None = None
+    alpha_vantage: AlphaVantageProvider | None = None
     unavailable: dict[str, str] = field(default_factory=dict)
 
     def require(self, name: str):
@@ -32,7 +38,19 @@ class Providers:
 
     def all(self):
         return [
-            p for p in (self.sec, self.fred, self.yahoo, self.news, self.wiki, self.nasdaq) if p
+            p
+            for p in (
+                self.sec,
+                self.fred,
+                self.yahoo,
+                self.news,
+                self.wiki,
+                self.nasdaq,
+                self.finra,
+                self.finnhub,
+                self.alpha_vantage,
+            )
+            if p
         ]
 
     def stats(self) -> dict[str, int]:
@@ -66,6 +84,11 @@ def build_providers(
         "news": lambda: GoogleNewsProvider(ua, **kw),
         "wiki": lambda: WikipediaProvider(ua, **kw),
         "nasdaq": lambda: NasdaqTraderProvider(ua, **kw),
+        "finra": lambda: FinraProvider(ua, **kw),
+        "finnhub": lambda: FinnhubProvider(settings.finnhub_api_key.get_secret_value(), **kw),
+        "alpha_vantage": lambda: AlphaVantageProvider(
+            settings.alpha_vantage_api_key.get_secret_value(), **kw
+        ),
     }.items():
         try:
             setattr(out, attr, factory())

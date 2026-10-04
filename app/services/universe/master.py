@@ -56,8 +56,12 @@ def upsert_uniform(
     db: DB, table: str, rows: list[dict[str, Any]], on_conflict: str, chunk: int = 500
 ) -> int:
     """Upsert rows grouped by their exact key set (never mixes partial and full rows)."""
+    keys = [k.strip() for k in on_conflict.split(",")]
+    latest: dict[tuple, dict[str, Any]] = {}
+    for r in rows:  # Postgres rejects two rows with the same key in one upsert: last one wins
+        latest[tuple(str(r.get(k)) for k in keys)] = r
     groups: dict[frozenset[str], list[dict[str, Any]]] = defaultdict(list)
-    for r in rows:
+    for r in latest.values():
         groups[frozenset(r)].append(r)
     written = 0
     for batch in groups.values():
@@ -94,9 +98,10 @@ def listing_rows(
             "is_active": True,
             "is_test_issue": cls.is_test_issue,
             "listing_financial_status": li.financial_status,
-            "cik": str(info.cik).zfill(10) if info else None,
-            "sec_company_name": info.title if info else None,
         }
+        if info:  # SEC unavailable / no match must never erase a CIK we already know
+            row["cik"] = str(info.cik).zfill(10)
+            row["sec_company_name"] = info.title
         prev = existing.get(tk)
         if prev is None:
             new += 1
@@ -118,6 +123,20 @@ def listing_rows(
         row["is_reit"] = bool((prev or {}).get("is_reit")) or cls.is_reit_by_name
         out.append(row)
     return out, new
+
+
+def cik_changes(existing: dict[str, dict[str, Any]], cik_map: dict[str, Any]) -> list[str]:
+    """Tickers whose SEC CIK differs from the one we stored: a ticker change / reuse or a mapping
+    conflict. SEC (primary source) wins in the data, but a person must look at each of these."""
+    out = []
+    for tk, r in sorted(existing.items()):
+        info = cik_map.get(tk)
+        old = r.get("cik")
+        if info and old and str(info.cik).zfill(10) != str(old).zfill(10):
+            out.append(
+                f"{tk}: SEC CIK changed {old} -> {str(info.cik).zfill(10)} (ticker change/reuse?)"
+            )
+    return out
 
 
 def inactive_rows(

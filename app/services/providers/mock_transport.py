@@ -119,6 +119,10 @@ def synthetic_bars(
     return out
 
 
+MOCK_DEEP = ["MHLT", "MIND", "MBNK", "MUTL", "MREI"]
+MOCK_PEER_GROUPS = [["MHLT", "MADR", "MDEF"], ["MIND", "MLOW"], ["MBNK", "MFIN", "MSPC"]]
+
+
 class MockWorld:
     def __init__(self, today: date | None = None) -> None:
         self.today = today or datetime.now(UTC).date()
@@ -141,6 +145,16 @@ class MockWorld:
             return httpx.Response(200, text=NASDAQ_LISTED_MOCK)
         if host == "www.nasdaqtrader.com" and path.endswith("/otherlisted.txt"):
             return httpx.Response(200, text=OTHER_LISTED_MOCK)
+        if host == "cdn.finra.org":
+            return self._finra(path)
+        if host == "finnhub.io":
+            return self._finnhub(path, q)
+        if host == "www.alphavantage.co":
+            return self._alpha(q)
+        if host == "www.sec.gov" and path == "/cgi-bin/browse-edgar":
+            return httpx.Response(200, text=self._atom())
+        if host == "data.sec.gov" and "/api/xbrl/companyfacts/" in path:
+            return self._json(self._facts(int(re.search(r"CIK(\d+)", path).group(1))))
         if host == "data.sec.gov":
             return self._json(self._submissions(int(re.search(r"CIK(\d+)", path).group(1))))
         if host == "www.sec.gov" and path.startswith("/Archives/"):
@@ -168,7 +182,9 @@ class MockWorld:
                         }
                     }
                 )
-            return self._yahoo(sym, q.get("range", "6mo"))
+            if "/v7/finance/options/" in path:
+                return self._options(sym)
+            return self._yahoo(sym, q.get("range", "6mo"), bool(q.get("events")))
         if host == "news.google.com":
             return self._news(q.get("q", ""))
         if host == "en.wikipedia.org":
@@ -238,7 +254,7 @@ class MockWorld:
         return self._json({"observations": obs})
 
     # ---- Yahoo ----
-    def _yahoo(self, sym: str, rng: str) -> httpx.Response:
+    def _yahoo(self, sym: str, rng: str, events: bool = False) -> httpx.Response:
         if sym.startswith("BAD"):
             return self._json(
                 {
@@ -248,17 +264,212 @@ class MockWorld:
                     }
                 }
             )
-        n = {"5d": 5, "1mo": 22, "6mo": 130}.get(rng, 130)
+        n = {"5d": 5, "1mo": 22, "6mo": 130, "1y": 252}.get(rng, 130)
         bars = synthetic_bars(sym, self.today, n)
         ts = [
             int(datetime(b[0].year, b[0].month, b[0].day, 14, 30, tzinfo=UTC).timestamp())
             for b in bars
         ]
         last = bars[-1]
+        ev: dict = {}
+        if events and _rng(sym, "div").random() < 0.5:  # synthetic quarterly dividend on some names
+            ev = {"dividends": {
+                str(ts[i]): {"amount": 0.5, "date": ts[i]} for i in range(len(ts) - 1, 0, -63)
+            }}  # fmt: skip
         return self._json({"chart": {"error": None, "result": [{
+            **({"events": ev} if ev else {}),
             "meta": {"symbol": sym, "gmtoffset": -14400, "regularMarketPrice": round(last[4], 2), "regularMarketTime": ts[-1], "chartPreviousClose": round(bars[-2][4], 2)},
             "timestamp": ts,
             "indicators": {"quote": [{"open": [round(b[1], 2) for b in bars], "high": [round(b[2], 2) for b in bars], "low": [round(b[3], 2) for b in bars], "close": [round(b[4], 2) for b in bars], "volume": [b[5] // 1000 if sym in LOW_VOLUME else b[5] for b in bars]}], "adjclose": [{"adjclose": [round(b[4], 2) for b in bars]}]}}]}})  # fmt: skip
+
+    # ---- deep-dive mocks (all SYNTHETIC) ----
+    def _finra(self, path: str) -> httpx.Response:
+        d = re.search(r"(\d{8})", path).group(1)
+        if "shrt" in path:
+            rows = [
+                "accountingYearMonthNumber,symbolCode,issueName,currentShortPositionQuantity,previousShortPositionQuantity,changePercent,averageDailyVolumeQuantity,daysToCoverQuantity,settlementDate"
+            ]
+            for i, t in enumerate(MOCK_DEEP):
+                rows.append(
+                    f"202609,{t},Mock {t},{1_000_000 * (i + 1)},{900_000 * (i + 1)},11.1,{500_000 * (i + 1)},{2.0 + i},{d[:4]}-{d[4:6]}-{d[6:]}"
+                )
+            return httpx.Response(200, text="\n".join(rows))
+        if "CNMSshvol" in path:
+            rows = ["Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market"]
+            for i, t in enumerate(MOCK_DEEP):
+                rows.append(f"{d}|{t}|{400_000 + i * 1000}|1000|{1_000_000 + i * 5000}|Q,N")
+            rows.append("1234 records")
+            return httpx.Response(200, text="\n".join(rows))
+        return httpx.Response(404, text="mock")
+
+    def _finnhub(self, path: str, q: dict) -> httpx.Response:
+        if path.endswith("/stock/peers"):
+            sym = q.get("symbol", "")
+            group = next((g for g in MOCK_PEER_GROUPS if sym in g), [sym])
+            return self._json(list(group))
+        if "recommendation" in path:
+            p = self.today.replace(day=1)
+            return self._json(
+                [
+                    {
+                        "symbol": q.get("symbol"),
+                        "period": p.isoformat(),
+                        "strongBuy": 5,
+                        "buy": 12,
+                        "hold": 8,
+                        "sell": 1,
+                        "strongSell": 0,
+                    },
+                    {
+                        "symbol": q.get("symbol"),
+                        "period": (p - timedelta(days=31)).replace(day=1).isoformat(),
+                        "strongBuy": 4,
+                        "buy": 11,
+                        "hold": 9,
+                        "sell": 2,
+                        "strongSell": 0,
+                    },
+                ]
+            )
+        d = self.today + timedelta(days=3)
+        return self._json(
+            {
+                "earningsCalendar": [
+                    {
+                        "symbol": t,
+                        "date": d.isoformat(),
+                        "hour": "amc",
+                        "epsEstimate": 1.5,
+                        "revenueEstimate": 1e9,
+                    }
+                    for t in MOCK_DEEP[:1]
+                ]
+            }
+        )
+
+    def _alpha(self, q: dict) -> httpx.Response:
+        if q.get("function") == "EARNINGS_CALENDAR":
+            d1 = self.today + timedelta(days=1)
+            d2 = self.today + timedelta(days=30)
+            body = (
+                "symbol,name,reportDate,fiscalDateEnding,estimate,currency\n"
+                + f"MHLT,Mockhealth,{d1},2026-09-30,1.2,USD\nMIND,Mockindustrial,{d2},2026-09-30,0.8,USD\nNOTLISTED,Other,{d2},2026-09-30,0.1,USD\n"
+            )
+            return httpx.Response(200, text=body)
+        if q.get("function") == "EARNINGS_CALL_TRANSCRIPT":
+            return self._json(
+                {
+                    "symbol": q.get("symbol"),
+                    "quarter": q.get("quarter"),
+                    "transcript": [
+                        {
+                            "speaker": "Mock CEO",
+                            "title": "CEO",
+                            "content": "Synthetic prepared remarks about demand and margins.",
+                        },
+                        {
+                            "speaker": "Mock Analyst",
+                            "content": "Synthetic question about guidance.",
+                        },
+                    ],
+                }
+            )
+        return self._json({"Information": "mock: unknown function"})
+
+    def _atom(self) -> str:
+        def e(acc, form, name, cik):
+            return f'<entry><title>{form} - {name} ({cik}) (Filer)</title><link href="https://www.sec.gov/Archives/edgar/data/{int(cik)}/x.htm"/><updated>{self.today}T14:00:00-04:00</updated><id>urn:tag:sec.gov,2008:accession-number={acc}</id></entry>'
+
+        return (
+            '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">'
+            + e("0009000001-26-000001", "8-K", "MOCKHEALTH THERAPEUTICS INC", "0009000001")
+            + e("0000000999-26-000002", "8-K", "UNKNOWN CO", "0000000999")
+            + "</feed>"
+        )
+
+    def _facts(self, cik: int) -> dict:
+        def fy(end, val, start, fy_):
+            return {
+                "start": start,
+                "end": end,
+                "val": val,
+                "accn": "0000000000-26-000001",
+                "fy": fy_,
+                "fp": "FY",
+                "form": "10-K",
+                "filed": end[:4] + "-12-31",
+            }
+
+        return {
+            "cik": cik,
+            "facts": {
+                "us-gaap": {
+                    "Revenues": {
+                        "units": {
+                            "USD": [
+                                fy("2025-12-31", 1_000_000_000, "2025-01-01", 2025),
+                                fy("2024-12-31", 800_000_000, "2024-01-01", 2024),
+                            ]
+                        }
+                    },
+                    "NetIncomeLoss": {
+                        "units": {"USD": [fy("2025-12-31", 120_000_000, "2025-01-01", 2025)]}
+                    },
+                    "Assets": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "end": "2025-12-31",
+                                    "val": 2_000_000_000,
+                                    "form": "10-K",
+                                    "filed": "2026-02-01",
+                                }
+                            ]
+                        }
+                    },
+                    "EarningsPerShareDiluted": {
+                        "units": {"USD/shares": [fy("2025-12-31", 2.4, "2025-01-01", 2025)]}
+                    },
+                },
+                "dei": {
+                    "EntityCommonStockSharesOutstanding": {
+                        "units": {
+                            "shares": [
+                                {"end": "2026-02-01", "val": 50_000_000, "filed": "2026-02-05"}
+                            ]
+                        }
+                    }
+                },
+            },
+        }
+
+    def _options(self, sym: str) -> httpx.Response:
+        if sym.startswith("BAD"):
+            return httpx.Response(401, text="Unauthorized")
+        exp = int(
+            datetime.combine(
+                self.today + timedelta(days=21), datetime.min.time(), tzinfo=UTC
+            ).timestamp()
+        )
+        ch = lambda k, iv, v: {"strike": k, "impliedVolatility": iv, "volume": v}  # noqa: E731
+        return self._json(
+            {
+                "optionChain": {
+                    "result": [
+                        {
+                            "quote": {"regularMarketPrice": 100.0},
+                            "options": [
+                                {
+                                    "expirationDate": exp,
+                                    "calls": [ch(95, 0.4, 100), ch(100, 0.35, 300)],
+                                    "puts": [ch(100, 0.37, 200), ch(105, 0.45, 50)],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        )
 
     # ---- Google News ----
     def _news(self, query: str) -> httpx.Response:

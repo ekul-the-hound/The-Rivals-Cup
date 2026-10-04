@@ -12,6 +12,7 @@ from app.services.providers.base import FileCache, HttpClient, ProviderError
 
 CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 SUMMARY = "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
+OPTIONS = "https://query1.finance.yahoo.com/v7/finance/options/{symbol}"
 
 
 class Bar(BaseModel):
@@ -27,6 +28,8 @@ class Bar(BaseModel):
 class History(BaseModel):
     symbol: str
     bars: list[Bar]
+    dividends: list[tuple[date, float]] = []
+    splits: list[tuple[date, str]] = []
     last_price: float | None = None
     last_price_at: datetime | None = None
     previous_close: float | None = None
@@ -68,12 +71,13 @@ class YahooProvider:
     async def aclose(self) -> None:
         await self.http.aclose()
 
-    async def daily_history(self, symbol: str, range_: str = "6mo") -> History:
-        data = await self.http.get_json(
-            CHART.format(symbol=symbol),
-            params={"range": range_, "interval": "1d", "includeAdjustedClose": "true"},
-            ttl=4 * 3600,
-        )
+    async def daily_history(
+        self, symbol: str, range_: str = "6mo", *, events: bool = False
+    ) -> History:
+        params = {"range": range_, "interval": "1d", "includeAdjustedClose": "true"}
+        if events:
+            params["events"] = "div,split"  # dividends and splits ride along on the same request
+        data = await self.http.get_json(CHART.format(symbol=symbol), params=params, ttl=4 * 3600)
         chart = data.get("chart", {})
         if chart.get("error") or not chart.get("result"):
             raise ProviderError(f"yahoo: no chart data for {symbol}: {chart.get('error')}")
@@ -100,9 +104,28 @@ class YahooProvider:
                 )
             )
         t = meta.get("regularMarketTime")
+        ev = res.get("events") or {}
+        divs = sorted(
+            (
+                (datetime.fromtimestamp(int(d.get("date", k)), UTC).date(), float(d["amount"]))
+                for k, d in (ev.get("dividends") or {}).items()
+                if d.get("amount") is not None
+            ),
+        )
+        splits = sorted(
+            (
+                (
+                    datetime.fromtimestamp(int(d.get("date", k)), UTC).date(),
+                    f"{d.get('numerator')}:{d.get('denominator')}",
+                )
+                for k, d in (ev.get("splits") or {}).items()
+            ),
+        )
         return History(
             symbol=symbol,
             bars=bars,
+            dividends=divs,
+            splits=splits,
             last_price=meta.get("regularMarketPrice"),
             last_price_at=datetime.fromtimestamp(t, UTC) if t else None,
             previous_close=meta.get("chartPreviousClose") or meta.get("previousClose"),
@@ -124,3 +147,35 @@ class YahooProvider:
             sector=r.get("summaryProfile", {}).get("sector"),
             industry=r.get("summaryProfile", {}).get("industry"),
         )
+
+    async def options_snapshot(self, symbol: str) -> dict | None:
+        """Best effort and unofficial: nearest-expiry at-the-money implied volatility and volume
+        put/call ratio. Returns None whenever Yahoo refuses (it often requires a login crumb)."""
+        try:
+            data = await self.http.get_json(OPTIONS.format(symbol=symbol), ttl=6 * 3600)
+            res = data["optionChain"]["result"][0]
+            spot = res["quote"]["regularMarketPrice"]
+            chain = res["options"][0]
+        except (ProviderError, KeyError, IndexError, TypeError):
+            return None
+        calls, puts = chain.get("calls") or [], chain.get("puts") or []
+        if not (calls or puts) or not spot:
+            return None
+
+        def atm_iv(side: list[dict]) -> float | None:
+            ok = [c for c in side if c.get("impliedVolatility") and c.get("strike")]
+            return (
+                min(ok, key=lambda c: abs(c["strike"] - spot))["impliedVolatility"] if ok else None
+            )
+
+        ivs = [v for v in (atm_iv(calls), atm_iv(puts)) if v]
+        cv = sum(c.get("volume") or 0 for c in calls)
+        pv = sum(c.get("volume") or 0 for c in puts)
+        exp = chain.get("expirationDate")
+        return {
+            "expiry": datetime.fromtimestamp(exp, UTC).date() if exp else None,
+            "atm_implied_vol": round(sum(ivs) / len(ivs), 4) if ivs else None,
+            "call_volume": cv,
+            "put_volume": pv,
+            "put_call_volume_ratio": round(pv / cv, 4) if cv else None,
+        }

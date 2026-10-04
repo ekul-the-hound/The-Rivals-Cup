@@ -6,6 +6,8 @@ from app.jobs._util import active_securities
 from app.services.features.metrics import adv_dollar, adv_shares, estimate_liquidity_cap
 from app.services.ingestion.runner import JobContext, JobResult
 from app.services.providers.base import ProviderError
+from app.services.providers.yahoo import Bar
+from app.services.validation.bars import validate_bars
 
 
 async def refresh_daily_prices(ctx: JobContext) -> JobResult:
@@ -23,6 +25,13 @@ async def refresh_daily_prices(ctx: JobContext) -> JobResult:
             warnings.append(f"{s['ticker']}: {exc}")
             continue
         bars = [b for b in hist.bars if not (drop_today and b.bar_date >= ctx.today)]
+        check = validate_bars([b.model_dump() for b in bars], today=ctx.today)
+        if msg := check.summary(s["ticker"]):
+            warnings.append(msg)
+        bars = [Bar(**c) for c in check.clean]  # only validated bars (never a same-date bad twin)
+        if not bars:
+            warnings.append(f"{s['ticker']}: no valid bars after validation")
+            continue
         rows_in += len(bars)
         rows = [
             {

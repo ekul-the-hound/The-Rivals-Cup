@@ -64,3 +64,9 @@ source/data_status are forced to `MANUAL`; recording or approving never changes 
 orders are never imported; the journal can write only `manual_portfolios`, `manual_pair_records`,
 `manual_positions`, `manual_trades` and `dividend_events`. All scores are labelled ESTIMATED with
 "WSR data authoritative".
+
+## Repository audit (October 2026)
+Full-repo search for order, broker, WSR, Trader View, browser-automation, scheduler, messenger and
+execution code found none outside the compliance rule definitions and tests. The MCP registry is 12
+read-only tools. The REST `POST` routes only record manual review decisions or start data refreshes; none
+can place or change an order. See `manual_operating_checklist.md` and `test_and_release_checklist.md`.

@@ -29,6 +29,27 @@ PROFILES["universe"] = [
     "refresh_universe_market_data",
     "build_target_sector_universe_views",
 ]
+# Deep-dive data. "deepmarket" is market-wide (filtered to target-sector names); "deepdive" is per
+# company and runs on DEEP_DIVE_TICKERS. See docs/deep_dive_data.md.
+PROFILES["deepmarket"] = [
+    "refresh_short_interest",
+    "refresh_short_sale_volume",
+    "refresh_sec_filing_feed",
+    "refresh_earnings_calendar",
+]
+PROFILES["deepdive"] = [
+    "refresh_analyst_ratings",
+    "refresh_earnings_transcripts",
+    "refresh_company_fundamentals",
+    "refresh_options_iv",
+]
+# Leaders & laggards (docs/leaders_laggards.md): price history for every tradable name, competitor
+# lists for the strongest names, then the weekly long/short candidate book. Run after "universe".
+PROFILES["leaders"] = [
+    "refresh_universe_price_history",
+    "refresh_competitor_map",
+    "build_leader_laggard_book",
+]
 PROFILES["full"] = PROFILES["sunday"]
 
 SCHEDULE_HINT = {"daily": "Mon-Fri 15:45 CT", "sunday": "Sun 18:00 CT", "monday": "Mon 07:30 CT"}

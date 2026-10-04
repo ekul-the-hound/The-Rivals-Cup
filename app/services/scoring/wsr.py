@@ -26,6 +26,7 @@ DD_WEIGHT = 0.5
 GROSS_LIMIT_PCT = 200.0
 GROSS_NEAR_PCT = 180.0
 LIQ_CAP_PCT = 0.01
+NON_POSITIVE_BOOK_GROSS_PCT = 1_000_000.0  # finite stand-in so JSON never carries Infinity
 MAX_LEVERAGE = 2.0
 LABEL = "ESTIMATED"
 AUTHORITY = "WSR data authoritative. This is an estimate, not an official WSR score."
@@ -255,7 +256,15 @@ def estimate_round(
                 short_mv += p.quantity * px
         _ = any_mark
         v = cash + long_mv - short_mv
-        gross_pct = (long_mv + short_mv) / v * 100 if v > 0 else float("inf")
+        if v > 0:
+            gross_pct = (long_mv + short_mv) / v * 100
+        else:
+            gross_pct = NON_POSITIVE_BOOK_GROSS_PCT
+            _flag_str(
+                warnings,
+                "BOOK_VALUE_NON_POSITIVE",
+                f"Estimated portfolio value is not positive on {d}; gross exposure is not meaningful.",
+            )
         rows.append(
             DayRow(
                 date=d,

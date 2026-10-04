@@ -415,7 +415,7 @@ def test_api_requires_auth_and_has_no_order_routes():
     c = TestClient(app)
     assert c.get("/universe/target-sectors").status_code == 401
     paths = [p for p in app.openapi()["paths"] if p.startswith("/universe")]
-    assert len(paths) == 6
+    assert len(paths) == 7
     assert not any(w in p for p in paths for w in ("order", "trade", "execute", "broker"))
 
 
@@ -425,7 +425,7 @@ def test_api_requires_auth_and_has_no_order_routes():
     [(2834, "HEALTH_CARE"), (8062, "HEALTH_CARE"), (3841, "HEALTH_CARE"), (3560, "INDUSTRIALS"),
      (4213, "INDUSTRIALS"), (6022, "FINANCIALS"), (6211, "FINANCIALS"), (4911, "UTILITIES"),
      (4941, "UTILITIES"), (6798, "REAL_ESTATE"), (6512, "REAL_ESTATE"), (7372, "OTHER"),
-     (1311, "OTHER"), (3674, "OTHER"), (None, None), ("", None)],
+     (1311, "OTHER"), (4700, "OTHER"), (4724, "OTHER"), (4731, "INDUSTRIALS"), (3674, "OTHER"), (None, None), ("", None)],
 )  # fmt: skip
 def test_sic_mapping(sic, sector):
     from app.services.universe.sic import sector_from_sic

@@ -3,6 +3,21 @@
 from app.jobs.cadence import PROFILES
 from app.jobs.corporate_catalysts import refresh_corporate_catalysts
 from app.jobs.data_quality import refresh_data_quality
+from app.jobs.deep_dive import (
+    refresh_analyst_ratings,
+    refresh_company_fundamentals,
+    refresh_earnings_calendar,
+    refresh_earnings_transcripts,
+    refresh_options_iv,
+    refresh_sec_filing_feed,
+    refresh_short_interest,
+    refresh_short_sale_volume,
+)
+from app.jobs.leaders import (
+    build_leader_laggard_book,
+    refresh_competitor_map,
+    refresh_universe_price_history,
+)
 from app.jobs.macro import refresh_macro_context
 from app.jobs.market_context import refresh_market_context
 from app.jobs.news import refresh_news
@@ -27,6 +42,17 @@ JOBS = {
     "classify_target_sectors": ("yahoo_finance", classify_target_sectors),
     "refresh_universe_market_data": ("yahoo_finance", refresh_universe_market_data),
     "build_target_sector_universe_views": ("derived", build_target_sector_universe_views),
+    "refresh_short_interest": ("finra", refresh_short_interest),
+    "refresh_short_sale_volume": ("finra", refresh_short_sale_volume),
+    "refresh_sec_filing_feed": ("sec_edgar", refresh_sec_filing_feed),
+    "refresh_earnings_calendar": ("alpha_vantage+finnhub", refresh_earnings_calendar),
+    "refresh_analyst_ratings": ("finnhub", refresh_analyst_ratings),
+    "refresh_earnings_transcripts": ("alpha_vantage", refresh_earnings_transcripts),
+    "refresh_company_fundamentals": ("sec_xbrl", refresh_company_fundamentals),
+    "refresh_options_iv": ("yahoo_options", refresh_options_iv),
+    "refresh_universe_price_history": ("yahoo_finance", refresh_universe_price_history),
+    "refresh_competitor_map": ("finnhub", refresh_competitor_map),
+    "build_leader_laggard_book": ("derived", build_leader_laggard_book),
     "refresh_daily_prices": ("yahoo_finance", refresh_daily_prices),
     "refresh_market_context": ("derived", refresh_market_context),
     "refresh_macro_context": ("fred", refresh_macro_context),

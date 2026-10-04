@@ -1,5 +1,8 @@
 # Option A: low-maintenance Monday peer-pair portfolio
 
+> **Superseded for weekly picking by `docs/leaders_laggards.md`** (strongest stock per sector as the
+> long, its weakest competitor as the short). This builder is kept for reference and still works.
+
 Research only. This system never places, queues or records an order, never connects to Wall Street
 Rivals or Trader View, and never marks a pair as traded. You review on Monday, enter any trades yourself
 in Trader View, and record them yourself afterward.

@@ -84,6 +84,11 @@ class FileCache:
             return None
         return obj["body"] if obj.get("exp", 0) > time.time() else None
 
+    def delete(self, key: str) -> None:
+        p = self._path(key)
+        if p and p.exists():
+            p.unlink(missing_ok=True)
+
     def set(self, key: str, body: str, ttl: float) -> None:
         p = self._path(key)
         if p and ttl > 0:
@@ -124,8 +129,16 @@ class HttpClient:
         await self._client.aclose()
 
     def _key(self, url: str, params: dict[str, Any] | None) -> str:
-        safe = {k: v for k, v in sorted((params or {}).items()) if "key" not in k.lower()}
+        safe = {
+            k: v
+            for k, v in sorted((params or {}).items())
+            if "key" not in k.lower() and "token" not in k.lower()
+        }
         return f"{self.name}|{url}|{safe}"
+
+    def forget(self, url: str, params: dict[str, Any] | None = None) -> None:
+        """Drop a cached response (used when a body turns out to be unusable)."""
+        self.cache.delete(self._key(url, params))
 
     async def get_text(
         self,
