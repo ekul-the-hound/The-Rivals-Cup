@@ -70,12 +70,18 @@ async def live_check(settings: Settings) -> int:
         missing("alpha vantage", "alpha_vantage")
     if providers.sec:
         await probe("sec edgar (ticker map)", providers.sec.ticker_cik_map())
-        from app.earnings.sources import InstitutionalFeed
+        from app.earnings.sources import KNOWN_HOLDERS, InstitutionalFeed
 
-        inst = InstitutionalFeed(providers.sec, settings.earnings_13f_cik_list[:1], 1)
+        inst = InstitutionalFeed(providers.sec, settings.earnings_13f_cik_list, 1)
         await inst.load(today)
-        out.append(("sec 13f (first holder)", not inst.errors and bool((inst._data or {}).get(settings.earnings_13f_cik_list[0])),
-                    "; ".join(inst.errors) or "ok"))  # fmt: skip
+        loaded = [c for c, t in (inst._data or {}).items() if t]
+        gone = [
+            KNOWN_HOLDERS.get(c, str(c)) for c in settings.earnings_13f_cik_list if c not in loaded
+        ]
+        note = f"{len(loaded)}/{len(settings.earnings_13f_cik_list)} holders loaded"
+        if gone:
+            note += f" (none for: {', '.join(gone)}; very large filings are skipped)"
+        out.append(("sec 13f holders", bool(loaded), note))
     else:
         missing("sec edgar", "sec")
     if providers.yahoo:
@@ -84,21 +90,28 @@ async def live_check(settings: Settings) -> int:
             await probe("yahoo options", providers.yahoo.options_snapshot("SPY"))
     if providers.news:
         await probe("google news", providers.news.search("Apple stock earnings", days=7))
-    if settings.politician_trades_url:
+    if settings.politician_trades_url or settings.earnings_capitol_trades_enabled:
         from app.earnings.sources import PoliticianFeed
         from app.services.providers.base import HttpClient
 
         http = HttpClient(
-            "politicians", user_agent=settings.effective_web_user_agent, per_second=1.0
+            "politicians", user_agent=settings.effective_web_user_agent, per_second=0.5
         )
-        feed = PoliticianFeed(http, settings.politician_trades_url)
+        feed = PoliticianFeed(
+            http,
+            settings.politician_trades_url,
+            web=settings.earnings_capitol_trades_enabled,
+            today=today,
+        )
         await feed.load()
+        n = sum(len(v) for v in (feed._by_ticker or {}).values())
+        src = "feed url" if settings.politician_trades_url else "capitoltrades.com"
         out.append(
-            ("politician feed", not feed.error and bool(feed._by_ticker), feed.error or "ok")
+            ("politician trades", not feed.error and n > 0, feed.error or f"{n} trades via {src}")
         )
         await http.aclose()
     else:
-        out.append(("politician feed", False, "POLITICIAN_TRADES_URL not set (optional)"))
+        out.append(("politician trades", False, "disabled (EARNINGS_CAPITOL_TRADES_ENABLED=false)"))
     await providers.aclose()
     width = max(len(n) for n, _, _ in out)
     for name, ok, note in out:

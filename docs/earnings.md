@@ -55,7 +55,11 @@ feed of House/Senate-style records (`ticker`, `type` purchase/sale, `amount`, `t
 | Finnhub `/company-news` | extra headlines merged with Google News | free key |
 | SEC 8-K filings | event-risk signal (restatement, listing notice, officer change...) | can only warn, never boosts |
 | FINRA short interest | days-to-cover flag (>= 6) | public CSV, no key |
-| Nasdaq earnings calendar | second consensus EPS, flags when it differs >= 10% from Finnhub | unofficial endpoint, may block; failure is reported, not fatal |
+| Nasdaq earnings calendar | second consensus EPS, flags when it differs >= 10% from Finnhub | unofficial endpoint, times out for scripts; OFF by default (`EARNINGS_NASDAQ_ENABLED`) |
+| Capitol Trades (public web pages) | politician trades, last ~75 days, no key | `EARNINGS_CAPITOL_TRADES_ENABLED=true`; checks robots.txt, 1 request / 2 s, about 20 pages per scan; a `POLITICIAN_TRADES_URL` JSON feed overrides it |
+| Yahoo options (crumb handshake) | at-the-money straddle move for the first expiry on/after the report date, plus put/call volume | unofficial; needs `OPTIONS_IV_ENABLED=true`; failure leaves the signal empty |
+| SEC 8-K Item 2.02 date check | flags `ALREADY REPORTED?` when an earnings 8-K was filed before the calendar date (stale calendar) | such names are never long/short candidates |
+| Finnhub /stock/earnings + 8-K dates | fallback earnings history when the free calendar returns no actuals | about 4 quarters |
 
 ## The bridge: let Claude see what its sandbox cannot
 

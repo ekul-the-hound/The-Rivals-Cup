@@ -3,6 +3,7 @@
 Not an authority for filings, corporate actions, or WSR-specific limits.
 """
 
+import contextlib
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
@@ -148,19 +149,67 @@ class YahooProvider:
             industry=r.get("summaryProfile", {}).get("industry"),
         )
 
-    async def options_snapshot(self, symbol: str) -> dict | None:
-        """Best effort and unofficial: nearest-expiry at-the-money implied volatility and volume
-        put/call ratio. Returns None whenever Yahoo refuses (it often requires a login crumb)."""
+    async def _crumb(self) -> str | None:
+        """Yahoo's options endpoint wants a session cookie plus a 'crumb' token. Best effort."""
+        if getattr(self, "_crumb_value", None) is not None:
+            return self._crumb_value or None
+        self._crumb_value = ""
         try:
-            data = await self.http.get_json(OPTIONS.format(symbol=symbol), ttl=6 * 3600)
+            with contextlib.suppress(ProviderError):
+                await self.http.get_text("https://fc.yahoo.com")  # sets the cookie (returns 404)
+            txt = await self.http.get_text("https://query1.finance.yahoo.com/v1/test/getcrumb")
+            if txt and len(txt) < 40 and "<" not in txt:
+                self._crumb_value = txt.strip()
+        except ProviderError:
+            pass
+        return self._crumb_value or None
+
+    async def options_snapshot(self, symbol: str, after: date | None = None) -> dict | None:
+        """Best effort and unofficial. Picks the first expiry on/after `after` (the report date) so
+        the prices include the earnings event, then returns the ATM implied vol, the volume
+        put/call ratio and the ATM straddle move (0.85 x straddle price / spot)."""
+        crumb = await self._crumb()
+        params: dict = {"crumb": crumb} if crumb else {}
+        try:
+            data = await self.http.get_json(
+                OPTIONS.format(symbol=symbol), params=params or None, ttl=6 * 3600
+            )
             res = data["optionChain"]["result"][0]
             spot = res["quote"]["regularMarketPrice"]
             chain = res["options"][0]
+            if after:
+                wanted = next(
+                    (
+                        e
+                        for e in res.get("expirationDates") or []
+                        if datetime.fromtimestamp(e, UTC).date() >= after
+                    ),
+                    None,
+                )
+                if wanted and wanted != chain.get("expirationDate"):
+                    data = await self.http.get_json(
+                        OPTIONS.format(symbol=symbol),
+                        params={**params, "date": wanted},
+                        ttl=6 * 3600,
+                    )
+                    chain = data["optionChain"]["result"][0]["options"][0]
         except (ProviderError, KeyError, IndexError, TypeError):
             return None
         calls, puts = chain.get("calls") or [], chain.get("puts") or []
         if not (calls or puts) or not spot:
             return None
+
+        def atm(side: list[dict]) -> dict | None:
+            ok = [c for c in side if c.get("strike")]
+            return min(ok, key=lambda c: abs(c["strike"] - spot)) if ok else None
+
+        def price(c: dict | None) -> float | None:
+            if not c:
+                return None
+            bid, ask = c.get("bid"), c.get("ask")
+            if bid and ask and ask >= bid:
+                return (bid + ask) / 2
+            return c.get("lastPrice") or None
 
         def atm_iv(side: list[dict]) -> float | None:
             ok = [c for c in side if c.get("impliedVolatility") and c.get("strike")]
@@ -172,10 +221,13 @@ class YahooProvider:
         cv = sum(c.get("volume") or 0 for c in calls)
         pv = sum(c.get("volume") or 0 for c in puts)
         exp = chain.get("expirationDate")
+        cp, pp = price(atm(calls)), price(atm(puts))
+        straddle = round(0.85 * (cp + pp) / spot, 4) if cp and pp else None
         return {
             "expiry": datetime.fromtimestamp(exp, UTC).date() if exp else None,
             "atm_implied_vol": round(sum(ivs) / len(ivs), 4) if ivs else None,
             "call_volume": cv,
             "put_volume": pv,
             "put_call_volume_ratio": round(pv / cv, 4) if cv else None,
+            "straddle_move": straddle,
         }

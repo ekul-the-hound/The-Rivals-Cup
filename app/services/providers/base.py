@@ -112,6 +112,7 @@ class HttpClient:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self.name = name
+        self.user_agent = user_agent
         self.limiter = RateLimiter(per_second, sleep)
         self.cache = cache or FileCache(None)
         self.retries = retries
@@ -132,7 +133,7 @@ class HttpClient:
         safe = {
             k: v
             for k, v in sorted((params or {}).items())
-            if "key" not in k.lower() and "token" not in k.lower()
+            if "key" not in k.lower() and "token" not in k.lower() and k.lower() != "crumb"
         }
         return f"{self.name}|{url}|{safe}"
 

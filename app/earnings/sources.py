@@ -327,19 +327,29 @@ def normalize_politician_record(r: dict) -> tuple[str, PoliticianTrade] | None:
 class PoliticianFeed:
     """Loads one JSON feed per run. Disabled (with a reason) when no URL is configured."""
 
-    def __init__(self, http: HttpClient | None, url: str) -> None:
-        self.http, self.url = http, url
+    def __init__(
+        self, http: HttpClient | None, url: str, web: bool = False, today: date | None = None
+    ) -> None:
+        self.http, self.url, self.web, self.today = http, url, web, today
         self._by_ticker: dict[str, list[PoliticianTrade]] | None = None
         self.error: str = ""
 
     @property
     def configured(self) -> bool:
-        return bool(self.http and self.url)
+        return bool(self.http and (self.url or self.web))
 
     async def load(self) -> None:
         if self._by_ticker is not None or not self.configured:
             return
         self._by_ticker = {}
+        if not self.url:  # no JSON feed configured: read the public Capitol Trades pages
+            from app.earnings.capitol import load_capitol_trades
+
+            try:
+                self._by_ticker = await load_capitol_trades(self.http, self.today or date.today())
+            except ProviderError as exc:
+                self.error = str(exc)
+            return
         try:
             data = await self.http.get_json(self.url, ttl=6 * 3600)
         except ProviderError as exc:

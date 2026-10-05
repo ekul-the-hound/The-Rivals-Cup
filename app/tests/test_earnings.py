@@ -11,8 +11,10 @@ from fastapi.testclient import TestClient
 
 from app.api.main import app
 from app.earnings import calibration, model
+from app.earnings.capitol import parse_capitol_date, parse_capitol_html, parse_size_mid
 from app.earnings.extra import (
     _eps,
+    already_reported,
     build_consensus,
     consensus_flag,
     filing_tilt,
@@ -653,3 +655,133 @@ def test_history_fallback_pairs_quarters_with_8k_dates():
     assert [e["date"] for e in ev] == [date(2026, 7, 22), date(2026, 4, 21)]
     assert ev[0]["eps_actual"] == 1.1 and ev[1]["eps_estimate"] == 1.0
     assert pair_surprises_with_filings(rows, []) == []
+
+
+def test_capitol_parsers():
+    assert parse_capitol_date("21 Sept2026") == date(2026, 9, 21)
+    assert parse_capitol_date("2 Oct 2026") == date(2026, 10, 2)
+    assert parse_capitol_date("garbage") is None
+    assert parse_size_mid("1K\u201315K") == 8000
+    assert parse_size_mid("250K\u2013500K") == 375000
+    assert parse_size_mid("25M\u201350M") == 37_500_000
+    assert parse_size_mid("N/A") is None
+
+
+async def test_scan_reads_capitol_trades_when_no_feed_url():
+    world, today = _world()
+    settings = earnings_scan._mock_settings().model_copy(update={"politician_trades_url": ""})
+    transport = world.transport()
+    providers = build_providers(settings, transport, sleep=lambda _x: asyncio.sleep(0))
+    try:
+        scan = await run_scan(settings, providers, today, mock=True, transport=transport)
+    finally:
+        await providers.aclose()
+    ko = next(r for r in scan.reports if r.ticker == "KO")
+    assert {t.side for t in ko.politicians} == {"buy", "sell"}
+    assert any(t.chamber in ("house", "senate") and t.amount_mid_usd for t in ko.politicians)
+    pol = next(s for s in scan.sources if s.name == "politicians")
+    assert pol.configured and pol.failed == 0, pol
+
+
+def test_capitol_html_skips_rows_without_ticker_or_side():
+    html = (
+        "<table><tbody><tr><td>x</td></tr></tbody></table>"
+        "<tr><td><h2><a>A B</a></h2></td><td>no ticker</td><td/><td/><td/><td/><td>buy</td><td/><td/></tr>"
+    )
+    assert parse_capitol_html(html) == []
+
+
+def _real_row(name, chamber, tk, pub, traded, owner, side, size):
+    """Same cell structure as a live capitoltrades.com row (captured Oct 2026), classes trimmed."""
+    tick = f'<span class="q-field issuer-ticker">{tk}</span>'
+    date_td = lambda d, y: (  # noqa: E731
+        f'<td><div><div class="text-size-3">{d}</div><div class="text-size-2">{y}</div></div></td>'
+    )
+    return (
+        f'<tr class="border-b"><td><div class="q-cell cell--politician"><div>'
+        f'<h2 class="politician-name"><a href="/politicians/X">{name}</a></h2>'
+        f'<div><span class="q-field party party--republican">Republican</span>'
+        f'<span class="q-field chamber chamber--{chamber}">{chamber.title()}</span></div></div></div></td>'
+        f'<td><div class="q-cell cell--traded-issuer"><h3 class="q-fieldset issuer-name"><a>X Inc</a></h3>'
+        f"{tick}</div></td>{date_td(*pub)}{date_td(*traded)}"
+        f'<td><div class="q-cell cell--reporting-gap"><div class="q-label">days</div><div class="q-value">'
+        f'<span>9</span></div></div></td><td><span class="q-field owner-with-icon"><div class="svg-image">'
+        f'</div><span class="q-label">{owner}</span></span></td>'
+        f'<td><div><span class="q-field tx-type tx-type--{side}">{side}</span></div></td>'
+        f'<td><span class="q-field trade-size"><div><div><span class="range-icon"></span></div>'
+        f'<span class="mt-1">{size}</span></div></span></td><td><span>$410.24</span></td>'
+        f'<td><button><a href="/trades/1"><span class="sr-only">Goto trade detail page.</span></a></button></td></tr>'
+    )
+
+
+def test_capitol_parser_on_live_shaped_rows():
+    html = "<table><tbody>" + "".join(
+        [
+            _real_row("David Taylor", "house", "AMGN:US", ("2 Oct", "2026"), ("21 Sept", "2026"),
+                      "Undisclosed", "buy", "1K–15K"),
+            _real_row("Sheldon Whitehouse", "senate", "V:US", ("1 Oct", "2026"), ("3 Sept", "2026"),
+                      "Self", "sell", "15K–50K"),
+            _real_row("Don Beyer", "house", "N/A", ("2 Oct", "2026"), ("22 Sept", "2026"),
+                      "Joint", "buy", "15K–50K"),
+        ]
+    ) + "</tbody></table>"  # fmt: skip
+    rows = parse_capitol_html(html)
+    assert [r["ticker"] for r in rows] == ["AMGN", "V"]  # the N/A (muni bond) row is dropped
+    a, v = rows
+    assert (a["politician"], a["chamber"], a["side"], a["amount_mid"]) == (
+        "David Taylor",
+        "house",
+        "buy",
+        8000,
+    )
+    assert a["published"] == date(2026, 10, 2) and a["traded"] == date(2026, 9, 21)
+    assert (v["chamber"], v["side"], v["amount_mid"]) == ("senate", "sell", 32500)
+
+
+async def test_options_snapshot_gets_crumb_and_straddle_move():
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append(str(req.url))
+        if req.url.host == "fc.yahoo.com":
+            return httpx.Response(404, headers={"set-cookie": "A3=x; Path=/"})
+        if req.url.path.endswith("/getcrumb"):
+            return httpx.Response(200, text="abc123crumb")
+        exp1, exp2 = 1_790_000_000, 1_790_600_000  # first one is BEFORE the report date
+        want = int(req.url.params.get("date", exp1))
+        quote = {"regularMarketPrice": 100.0}
+        chain = {
+            "expirationDate": want,
+            "calls": [
+                {"strike": 100, "bid": 3.0, "ask": 3.4, "impliedVolatility": 0.5, "volume": 10}
+            ],
+            "puts": [
+                {"strike": 100, "bid": 2.8, "ask": 3.2, "impliedVolatility": 0.5, "volume": 20}
+            ],
+        }
+        body = {"optionChain": {"result": [{"quote": quote, "expirationDates": [exp1, exp2],
+                                            "options": [chain]}]}}  # fmt: skip
+        return httpx.Response(200, json=body)
+
+    settings = earnings_scan._mock_settings()
+    providers = build_providers(
+        settings, httpx.MockTransport(handler), sleep=lambda _x: asyncio.sleep(0)
+    )
+    try:
+        after = datetime.fromtimestamp(1_790_100_000, UTC).date()
+        snap = await providers.yahoo.options_snapshot("ZZZ", after)
+    finally:
+        await providers.aclose()
+    assert snap and snap["straddle_move"] == pytest.approx(0.85 * 6.2 / 100, abs=1e-4)
+    assert any("crumb=abc123crumb" in u for u in calls)
+    assert any("date=1790600000" in u for u in calls)  # moved to the post-report expiry
+
+
+def test_already_reported_detection():
+    e = FilingEvent(form="8-K", filed=date(2026, 10, 1), items=["2.02", "9.01"], note="")
+    assert already_reported([e], date(2026, 10, 5), date(2026, 10, 4)) == e
+    assert already_reported([e], date(2026, 10, 1), date(2026, 10, 4)) is None  # reports today
+    old = FilingEvent(form="8-K", filed=date(2026, 7, 1), items=["2.02"], note="")
+    assert already_reported([old], date(2026, 10, 5), date(2026, 10, 4)) is None
+    other = FilingEvent(form="8-K", filed=date(2026, 10, 1), items=["5.02"], note="")
+    assert already_reported([other], date(2026, 10, 5), date(2026, 10, 4)) is None

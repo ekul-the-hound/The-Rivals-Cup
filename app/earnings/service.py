@@ -21,6 +21,7 @@ from app.config import Settings
 from app.config.clock import utcnow
 from app.earnings import DISCLAIMER, MODEL_VERSION, model
 from app.earnings.extra import (
+    already_reported,
     build_consensus,
     consensus_flag,
     finnhub_company_news,
@@ -100,6 +101,8 @@ def local_today(settings: Settings) -> date:
 
 def _implied_move(snapshot: dict | None, today: date) -> float | None:
     """Rough one-event move from the nearest-expiry ATM implied vol: 0.8 * IV * sqrt(days/365)."""
+    if snapshot and snapshot.get("straddle_move") and 0 < snapshot["straddle_move"] <= 0.6:
+        return float(snapshot["straddle_move"])  # the market's own price for the event
     if not snapshot or not snapshot.get("atm_implied_vol") or not snapshot.get("expiry"):
         return None
     dte = (snapshot["expiry"] - today).days
@@ -185,15 +188,21 @@ class _Context:
             HttpClient(
                 "politicians",
                 user_agent=settings.effective_web_user_agent,
-                per_second=1.0,
+                per_second=0.5,
+                **({"sleep": _no_sleep} if transport else {}),
                 timeout=settings.http_timeout_seconds,
                 cache=FileCache(cache),
                 transport=transport,
             )
-            if settings.politician_trades_url
+            if settings.politician_trades_url or settings.earnings_capitol_trades_enabled
             else None
         )
-        self.pol = PoliticianFeed(self.pol_http, settings.politician_trades_url)
+        self.pol = PoliticianFeed(
+            self.pol_http,
+            settings.politician_trades_url,
+            web=settings.earnings_capitol_trades_enabled,
+            today=today,
+        )
         self.inst = InstitutionalFeed(
             providers.sec, settings.earnings_13f_cik_list, settings.earnings_13f_max_filings
         )
@@ -295,7 +304,7 @@ async def _evidence(ctx: _Context, ev_row: EarningsEvent) -> tuple[model.Evidenc
         else none()
     )
     opt_t = (
-        ctx.t.run("options", p.yahoo.options_snapshot(t))
+        ctx.t.run("options", p.yahoo.options_snapshot(t, ev_row.earnings_date))
         if p.yahoo and s.options_iv_enabled
         else none()
     )
@@ -391,6 +400,14 @@ def _finish(
     for e in extra.get("filings", []):
         if e.note:
             flags.append(f"8-K {e.filed}: {e.note}")
+    done = already_reported(extra.get("filings", []), row.earnings_date, ctx.today)
+    if done:
+        flags.insert(
+            0,
+            f"ALREADY REPORTED? An earnings 8-K (Item 2.02) was filed {done.filed}, before the "
+            f"calendar date {row.earnings_date}. Verify the date on the company's IR page; not a "
+            "long candidate until confirmed.",
+        )
     session = row.time_of_day if row.time_of_day in ("bmo", "amc", "dmh") else None
     session = session or (nas or {}).get("session") or "unknown"
     avail = sum(x.available for x in signals)
@@ -425,8 +442,12 @@ def _finish(
         filings=extra.get("filings", []),
         short_interest=si,
         consensus=consensus,
-        long_candidate=bool(solid and p_up >= s.earnings_long_min_p_up and mc.mean > 0),
-        short_candidate=bool(solid and p_up <= 1 - s.earnings_long_min_p_up and mc.mean < 0),
+        long_candidate=bool(
+            solid and not done and p_up >= s.earnings_long_min_p_up and mc.mean > 0
+        ),
+        short_candidate=bool(
+            solid and not done and p_up <= 1 - s.earnings_long_min_p_up and mc.mean < 0
+        ),
         rank_score=round(100 * mc.mean * conf, 3),
     )
     r.suggestions = report_suggestions(r)
@@ -569,7 +590,7 @@ def _sources(s: Settings, p: Providers, ctx: _Context, t: _Tally) -> list[Source
         "finnhub": p.unavailable.get("finnhub", ""),
         "alpha_vantage": p.unavailable.get("alpha_vantage", ""),
         "sec_edgar": p.unavailable.get("sec", ""),
-        "politicians": "" if cfg["politicians"] else "set POLITICIAN_TRADES_URL",
+        "politicians": "" if cfg["politicians"] else "enable EARNINGS_CAPITOL_TRADES_ENABLED",
         "options": "" if cfg["options"] else "set OPTIONS_IV_ENABLED=true",
     }
     return [

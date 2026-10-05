@@ -34,6 +34,8 @@ class EarningsMockWorld(MockWorld):
         q = {k: v[0] for k, v in parse_qs(urlparse(str(req.url)).query).items()}
         if host == "mock-politicians.example":
             return self._politicians()
+        if host == "www.capitoltrades.com":
+            return self._capitol(path, q)
         if host == "api.nasdaq.com":
             return self._nasdaq(q)
         if host == "cdn.finra.org" and "shrt" in path:
@@ -63,6 +65,35 @@ class EarningsMockWorld(MockWorld):
         return super().handle(req)
 
     # ---- extra sources ----
+    def _capitol(self, path: str, q: dict) -> httpx.Response:
+        if path == "/robots.txt":
+            return httpx.Response(
+                200, text="User-agent: *\nAllow: /\n\nUser-agent: ClaudeBot\nDisallow: /"
+            )
+        page = int(q.get("page", "1"))
+        rows = []
+        if page == 1:
+            for i, (tk, side, size, owner) in enumerate(
+                [("KO", "buy", "1K\u201315K", "Spouse"), ("KO", "sell", "15K\u201350K", "Self"),
+                 ("HD", "buy", "250K\u2013500K", "Joint"), ("N/A", "buy", "1K\u201315K", "Self")]
+            ):  # fmt: skip
+                pub = self.today - timedelta(days=2 + i)
+                tr = pub - timedelta(days=20)
+                tick = (
+                    f'<span class="q-field issuer-ticker">{tk}:US</span>' if tk != "N/A" else "N/A"
+                )
+                rows.append(
+                    f'<tr><td><h2 class="politician-name"><a href="/politicians/X{i}">Pat Mock{i}</a></h2>'
+                    f'<span class="q-field chamber chamber--{"house" if i % 2 else "senate"}">x</span></td>'
+                    f'<td><h3 class="issuer-name"><a>Mock {tk}</a></h3>{tick}</td>'
+                    f"<td><div>{pub.day} {pub:%b}</div><div>{pub.year}</div></td>"
+                    f"<td><div>{tr.day} {tr:%b}</div><div>{tr.year}</div></td>"
+                    f'<td><span>20</span></td><td><span class="q-label">{owner}</span></td>'
+                    f"<td><div><span>{side}</span></div></td><td><div><span>{size}</span></div></td>"
+                    f'<td><span>$10.00</span></td><td><a href="/trades/{i}">go</a></td></tr>'
+                )
+        return httpx.Response(200, text=f"<table><tbody>{''.join(rows)}</tbody></table>")
+
     def _nasdaq(self, q: dict) -> httpx.Response:
         day = date.fromisoformat(q["date"])
         rows = []

@@ -103,6 +103,21 @@ def filing_tilt(events: list[FilingEvent]) -> float:
     return max(-1.0, min(0.0, t))
 
 
+def already_reported(
+    events: list[FilingEvent], report_date: date, today: date
+) -> FilingEvent | None:
+    """An Item 2.02 (results) 8-K filed in the last 14 days, before the calendar's report date,
+    means the company probably already reported and the calendar date is stale."""
+    for e in events:
+        if (
+            "2.02" in e.items
+            and today - timedelta(days=14) <= e.filed <= today
+            and e.filed < report_date
+        ):
+            return e
+    return None
+
+
 # ---- FINRA short interest ---------------------------------------------------------------------
 async def short_interest_map(finra: Any, today: date) -> dict[str, ShortInterestInfo]:
     rows = await finra.latest_short_interest(today)
