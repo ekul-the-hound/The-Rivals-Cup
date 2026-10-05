@@ -188,7 +188,9 @@ class _Context:
             HttpClient(
                 "politicians",
                 user_agent=settings.effective_web_user_agent,
-                per_second=0.5,
+                per_second=0.25,
+                retries=3,
+                backoff=2.0,
                 **({"sleep": _no_sleep} if transport else {}),
                 timeout=settings.http_timeout_seconds,
                 cache=FileCache(cache),

@@ -87,7 +87,15 @@ async def live_check(settings: Settings) -> int:
     if providers.yahoo:
         await probe("yahoo prices", providers.yahoo.daily_history("SPY", "1mo"))
         if settings.options_iv_enabled:
-            await probe("yahoo options", providers.yahoo.options_snapshot("SPY"))
+            snap = await providers.yahoo.options_snapshot("SPY")
+            why = providers.yahoo.last_options_error
+            out.append(
+                (
+                    "yahoo options",
+                    bool(snap),
+                    "ok" if snap else (why or "returned nothing"),
+                )
+            )
     if providers.news:
         await probe("google news", providers.news.search("Apple stock earnings", days=7))
     if settings.politician_trades_url or settings.earnings_capitol_trades_enabled:
@@ -95,7 +103,11 @@ async def live_check(settings: Settings) -> int:
         from app.services.providers.base import HttpClient
 
         http = HttpClient(
-            "politicians", user_agent=settings.effective_web_user_agent, per_second=0.5
+            "politicians",
+            user_agent=settings.effective_web_user_agent,
+            per_second=0.25,
+            retries=3,
+            backoff=2.0,
         )
         feed = PoliticianFeed(
             http,

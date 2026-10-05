@@ -777,6 +777,54 @@ async def test_options_snapshot_gets_crumb_and_straddle_move():
     assert any("date=1790600000" in u for u in calls)  # moved to the post-report expiry
 
 
+async def test_options_snapshot_reports_why_it_failed_and_retries_stale_crumb():
+    state = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.host == "fc.yahoo.com":
+            return httpx.Response(404)
+        if req.url.path.endswith("/getcrumb"):
+            return httpx.Response(200, text="Too Many Requests")  # rate-limit text, not a crumb
+        state["n"] += 1
+        return httpx.Response(401, text="Invalid Crumb")
+
+    settings = earnings_scan._mock_settings()
+    providers = build_providers(
+        settings, httpx.MockTransport(handler), sleep=lambda _x: asyncio.sleep(0)
+    )
+    try:
+        assert await providers.yahoo.options_snapshot("ZZZ") is None
+        assert "crumb" in providers.yahoo.last_options_error.lower()
+    finally:
+        await providers.aclose()
+
+
+async def test_capitol_trades_keeps_early_pages_when_rate_limited_later():
+    from app.earnings.capitol import load_capitol_trades
+    from app.services.providers.base import HttpClient
+
+    world, today = _world()
+    inner = world.transport()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.startswith("/trades") and req.url.params.get("page", "1") != "1":
+            return httpx.Response(429)
+        return inner.handle_request(req) if hasattr(inner, "handle_request") else httpx.Response(404)
+
+    async def fast(_x):
+        return None
+
+    http = HttpClient(
+        "politicians", user_agent="t", per_second=100, retries=0,
+        transport=httpx.MockTransport(handler), sleep=fast,
+    )  # fmt: skip
+    try:
+        got = await load_capitol_trades(http, today, lookback_days=3650)
+    finally:
+        await http.aclose()
+    assert got  # page 1 loaded even though page 2 was refused
+
+
 def test_already_reported_detection():
     e = FilingEvent(form="8-K", filed=date(2026, 10, 1), items=["2.02", "9.01"], note="")
     assert already_reported([e], date(2026, 10, 5), date(2026, 10, 4)) == e

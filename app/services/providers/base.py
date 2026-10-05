@@ -148,6 +148,7 @@ class HttpClient:
         params: dict[str, Any] | None = None,
         ttl: float = 0,
         max_bytes: int | None = None,
+        headers: dict[str, str] | None = None,
     ) -> str:
         key = self._key(url, params)
         cached = self.cache.get(key)
@@ -159,7 +160,7 @@ class HttpClient:
             await self.limiter.wait()
             self.stats.http_requests += 1
             try:
-                async with self._client.stream("GET", url, params=params) as resp:
+                async with self._client.stream("GET", url, params=params, headers=headers) as resp:
                     if resp.status_code in RETRY_STATUS and attempt < self.retries:
                         last = f"HTTP {resp.status_code}"
                         delay = self._delay(attempt, resp.headers.get("Retry-After"))

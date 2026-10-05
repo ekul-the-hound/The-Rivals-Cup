@@ -14,6 +14,15 @@ from app.services.providers.base import FileCache, HttpClient, ProviderError
 CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 SUMMARY = "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
 OPTIONS = "https://query1.finance.yahoo.com/v7/finance/options/{symbol}"
+# Yahoo's unofficial options endpoint refuses non-browser clients; used only for the options calls.
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 class Bar(BaseModel):
@@ -55,6 +64,7 @@ class YahooProvider:
         timeout: float = 20.0,
         sleep=None,
     ) -> None:
+        self.last_options_error = ""
         kw = {"sleep": sleep} if sleep else {}
         self.http = HttpClient(
             self.name,
@@ -149,31 +159,53 @@ class YahooProvider:
             industry=r.get("summaryProfile", {}).get("industry"),
         )
 
-    async def _crumb(self) -> str | None:
+    async def _crumb(self, refresh: bool = False) -> str | None:
         """Yahoo's options endpoint wants a session cookie plus a 'crumb' token. Best effort."""
-        if getattr(self, "_crumb_value", None) is not None:
+        if not refresh and getattr(self, "_crumb_value", None) is not None:
             return self._crumb_value or None
         self._crumb_value = ""
-        try:
-            with contextlib.suppress(ProviderError):
-                await self.http.get_text("https://fc.yahoo.com")  # sets the cookie (returns 404)
-            txt = await self.http.get_text("https://query1.finance.yahoo.com/v1/test/getcrumb")
-            if txt and len(txt) < 40 and "<" not in txt:
-                self._crumb_value = txt.strip()
-        except ProviderError:
-            pass
+        with contextlib.suppress(ProviderError):
+            await self.http.get_text("https://fc.yahoo.com", headers=_BROWSER_HEADERS)  # cookie
+        for host in ("query1", "query2"):
+            try:
+                txt = await self.http.get_text(
+                    f"https://{host}.finance.yahoo.com/v1/test/getcrumb", headers=_BROWSER_HEADERS
+                )
+            except ProviderError as exc:
+                self.last_options_error = f"crumb: {exc}"
+                continue
+            txt = (txt or "").strip()
+            if txt and len(txt) < 40 and "<" not in txt and " " not in txt:
+                self._crumb_value = txt
+                break
+            self.last_options_error = f"crumb: unusable response {txt[:40]!r}"
         return self._crumb_value or None
+
+    async def _options_json(self, symbol: str, params: dict) -> dict:
+        last: ProviderError | None = None
+        for host in ("query1", "query2"):
+            url = OPTIONS.format(symbol=symbol).replace("query1", host)
+            try:
+                return await self.http.get_json(
+                    url, params=params or None, ttl=6 * 3600, headers=_BROWSER_HEADERS
+                )
+            except ProviderError as exc:
+                last = exc
+                if exc.status in (401, 403):
+                    crumb = await self._crumb(refresh=True)  # stale crumb: get a new one once
+                    params = {**params, "crumb": crumb} if crumb else params
+        raise last or ProviderError("yahoo: options request failed")
 
     async def options_snapshot(self, symbol: str, after: date | None = None) -> dict | None:
         """Best effort and unofficial. Picks the first expiry on/after `after` (the report date) so
         the prices include the earnings event, then returns the ATM implied vol, the volume
-        put/call ratio and the ATM straddle move (0.85 x straddle price / spot)."""
+        put/call ratio and the ATM straddle move (0.85 x straddle price / spot).
+        On failure returns None and sets `last_options_error` to say why."""
+        self.last_options_error = ""
         crumb = await self._crumb()
         params: dict = {"crumb": crumb} if crumb else {}
         try:
-            data = await self.http.get_json(
-                OPTIONS.format(symbol=symbol), params=params or None, ttl=6 * 3600
-            )
+            data = await self._options_json(symbol, params)
             res = data["optionChain"]["result"][0]
             spot = res["quote"]["regularMarketPrice"]
             chain = res["options"][0]
@@ -187,16 +219,17 @@ class YahooProvider:
                     None,
                 )
                 if wanted and wanted != chain.get("expirationDate"):
-                    data = await self.http.get_json(
-                        OPTIONS.format(symbol=symbol),
-                        params={**params, "date": wanted},
-                        ttl=6 * 3600,
-                    )
+                    data = await self._options_json(symbol, {**params, "date": wanted})
                     chain = data["optionChain"]["result"][0]["options"][0]
-        except (ProviderError, KeyError, IndexError, TypeError):
+        except ProviderError as exc:
+            self.last_options_error = self.last_options_error or str(exc)
+            return None
+        except (KeyError, IndexError, TypeError):
+            self.last_options_error = "unexpected response shape (no option chain)"
             return None
         calls, puts = chain.get("calls") or [], chain.get("puts") or []
         if not (calls or puts) or not spot:
+            self.last_options_error = "empty option chain"
             return None
 
         def atm(side: list[dict]) -> dict | None:

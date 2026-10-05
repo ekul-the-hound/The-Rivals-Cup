@@ -97,7 +97,7 @@ async def _robots_ok(http: HttpClient, path: str) -> bool:
 
 
 async def load_capitol_trades(
-    http: HttpClient, today: date, lookback_days: int = 75, max_pages: int = 30
+    http: HttpClient, today: date, lookback_days: int = 75, max_pages: int = 12
 ) -> dict[str, list[PoliticianTrade]]:
     """Newest-first pages until trades are older than the lookback. Raises ProviderError."""
     if not await _robots_ok(http, "/trades"):
@@ -105,9 +105,14 @@ async def load_capitol_trades(
     cutoff = today - timedelta(days=lookback_days)
     by_ticker: dict[str, list[PoliticianTrade]] = {}
     for page in range(1, max_pages + 1):
-        html = await http.get_text(
-            f"{BASE}/trades", params={"pageSize": PAGE_SIZE, "page": page}, ttl=6 * 3600
-        )
+        try:
+            html = await http.get_text(
+                f"{BASE}/trades", params={"pageSize": PAGE_SIZE, "page": page}, ttl=6 * 3600
+            )
+        except ProviderError:
+            if page == 1:
+                raise
+            break  # rate-limited part-way: keep the newest pages already loaded
         rows = parse_capitol_html(html)
         if not rows:
             if page == 1:
