@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 
 from app.api.admin import router as admin_router
 from app.api.deps import get_store
+from app.api.earnings import router as earnings_router
 from app.api.leaders import router as leaders_router
 from app.api.pairs import router as pairs_router
 from app.api.universe import router as universe_router
@@ -33,6 +34,7 @@ app.include_router(admin_router)
 app.include_router(pairs_router)
 app.include_router(universe_router)
 app.include_router(leaders_router)
+app.include_router(earnings_router)
 
 
 @app.get("/health", response_model=HealthResponse)

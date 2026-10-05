@@ -71,6 +71,33 @@ class Settings(BaseSettings):
     leaders_max_leg_pct: float = 15.0  # no single leg above this % of portfolio value
     leaders_gross_target_pct: float = 100.0  # both legs together; the WSR gross limit is 200%
 
+    # Earnings module (docs/earnings.md). Research only: nothing here places or manages a trade.
+    earnings_watchlist: str = ""  # comma-separated tickers always analysed when they report
+    earnings_max_tickers: int = 80  # cap on companies analysed per scan (free-tier friendly)
+    earnings_deep_top_n: int = 12  # second pass (peer read-through) on the strongest names
+    earnings_mc_paths: int = 10_000  # Monte Carlo paths per report
+    earnings_base_p_up: float = 0.52  # ASSUMED prior P(stock up after a report); not backtested
+    earnings_min_adv_usd: float = 5_000_000.0  # long/short candidates need this 20d $ volume
+    earnings_long_min_p_up: float = 0.58
+    earnings_long_min_confidence: float = 0.45
+    earnings_insider_lookback_days: int = 90
+    earnings_13f_ciks: str = "1364742,102909,93751,1067983"  # BlackRock, Vanguard, State Street, Berkshire
+    earnings_13f_max_filings: int = 2  # latest and prior quarter per institution
+    politician_trades_url: str = ""  # optional JSON feed (House/Senate Stock Watcher style)
+    finnhub_congress_enabled: bool = False  # Finnhub congressional trades are a PAID endpoint
+
+    @property
+    def earnings_watchlist_list(self) -> list[str]:
+        return [
+            x.strip().upper().replace(".", "-")
+            for x in self.earnings_watchlist.split(",")
+            if x.strip()
+        ]
+
+    @property
+    def earnings_13f_cik_list(self) -> list[int]:
+        return [int(x) for x in self.earnings_13f_ciks.split(",") if x.strip().isdigit()]
+
     # DEVELOPMENT ONLY bearer-token mode. See app/api/deps.py.
     dev_bearer_token: SecretStr | None = None
 
