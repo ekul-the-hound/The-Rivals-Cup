@@ -48,6 +48,28 @@ feed of House/Senate-style records (`ticker`, `type` purchase/sale, `amount`, `t
 `representative` or `senator`). Disclosures can be up to 45 days late, so the signal is weighted low.
 13F data is quarterly and also up to 45 days stale.
 
+## Extra sources (added later)
+
+| Source | Used for | Notes |
+|---|---|---|
+| Finnhub `/company-news` | extra headlines merged with Google News | free key |
+| SEC 8-K filings | event-risk signal (restatement, listing notice, officer change...) | can only warn, never boosts |
+| FINRA short interest | days-to-cover flag (>= 6) | public CSV, no key |
+| Nasdaq earnings calendar | second consensus EPS, flags when it differs >= 10% from Finnhub | unofficial endpoint, may block; failure is reported, not fatal |
+
+## The bridge: let Claude see what its sandbox cannot
+
+Claude's sandbox blocks most finance APIs, but your PC does not. Run the scan on your PC; it writes
+files into the repo folder that Claude can read.
+
+- `python -m scripts.earnings_scan` writes `data/generated/earnings/latest.json` and a plain-text
+  research packet `data/generated/earnings/packet.md` (mock runs write `mock_packet.md`).
+- `python -m scripts.web_fetch URL [URL...] [--file urls.txt]` downloads public pages as text into
+  `data/generated/web/` (plus `index.json`). It obeys robots.txt, waits 2 s between requests, sends an
+  honest user agent, and notes pages that need JavaScript or a login instead of faking them.
+
+Read-only: nothing here logs in anywhere or places trades.
+
 ## How the probability works
 
 `log-odds = logit(prior) + sum(weight x signal)`, with every signal scaled to -1..+1. The prior is

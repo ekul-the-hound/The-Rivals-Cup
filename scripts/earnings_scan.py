@@ -22,6 +22,7 @@ from app.config import Settings, get_settings
 from app.config.clock import utcnow
 from app.earnings import calibration
 from app.earnings.mock import POLITICIAN_URL, EarningsMockWorld
+from app.earnings.packet import write_packet
 from app.earnings.service import SNAPSHOT, local_today, render_table, run_scan, save_scan
 from app.services.providers.registry import build_providers
 
@@ -152,6 +153,9 @@ async def main_async(a: argparse.Namespace) -> int:
     if not a.no_save:
         path = save_scan(scan, SNAPSHOT.with_name("mock.json") if a.mock else SNAPSHOT)
         print(f"snapshot saved: {path}")
+        packet = path.with_name("mock_packet.md" if a.mock else "packet.md")
+        write_packet(scan, packet)
+        print(f"research packet saved: {packet}")
         if not a.mock:
             print(f"{calibration.log_predictions(scan)} predictions logged for later scoring")
     return 0

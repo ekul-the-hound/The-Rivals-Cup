@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     earnings_13f_max_filings: int = 2  # latest and prior quarter per institution
     politician_trades_url: str = ""  # optional JSON feed (House/Senate Stock Watcher style)
     finnhub_congress_enabled: bool = False  # Finnhub congressional trades are a PAID endpoint
+    earnings_nasdaq_enabled: bool = True  # Nasdaq.com earnings calendar: UNOFFICIAL, keyless, best effort
+    earnings_finnhub_news_enabled: bool = True  # Finnhub company news (free tier) merged with Google News
+    earnings_8k_lookback_days: int = 45  # SEC 8-K events checked before a report
 
     @property
     def earnings_watchlist_list(self) -> list[str]:

@@ -83,6 +83,28 @@ class HistoryStats(BaseModel):
     last_moves: list[float] = Field(default_factory=list)
 
 
+class FilingEvent(BaseModel):
+    form: str
+    filed: date
+    items: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
+class ShortInterestInfo(BaseModel):
+    settlement_date: date
+    shares: float | None = None
+    change_pct: float | None = None  # percent change vs the prior report
+    days_to_cover: float | None = None
+
+
+class ConsensusInfo(BaseModel):
+    finnhub_eps: float | None = None
+    nasdaq_eps: float | None = None
+    n_estimates: int | None = None
+    last_year_eps: float | None = None
+    disagreement_pct: float | None = None
+
+
 class Suggestion(BaseModel):
     kind: str  # data | risk | model
     text: str
@@ -113,6 +135,9 @@ class TickerReport(BaseModel):
     insiders: InsiderSummary = Field(default_factory=InsiderSummary)
     politicians: list[PoliticianTrade] = Field(default_factory=list)
     institutions: list[InstitutionHolding] = Field(default_factory=list)
+    filings: list[FilingEvent] = Field(default_factory=list)
+    short_interest: ShortInterestInfo | None = None
+    consensus: ConsensusInfo | None = None
     suggestions: list[Suggestion] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     long_candidate: bool = False

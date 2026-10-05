@@ -11,9 +11,25 @@ from fastapi.testclient import TestClient
 
 from app.api.main import app
 from app.earnings import calibration, model
+from app.earnings.extra import (
+    _eps,
+    build_consensus,
+    consensus_flag,
+    filing_tilt,
+    merge_headlines,
+    short_interest_flag,
+)
 from app.earnings.mock import EarningsMockWorld
-from app.earnings.models import HistoryStats, InsiderSummary, PoliticianTrade
+from app.earnings.models import (
+    FilingEvent,
+    Headline,
+    HistoryStats,
+    InsiderSummary,
+    PoliticianTrade,
+    ShortInterestInfo,
+)
 from app.earnings.montecarlo import seed_for, simulate
+from app.earnings.packet import render_packet
 from app.earnings.service import load_scan, render_table, run_scan, save_scan
 from app.earnings.sources import (
     analyst_scores,
@@ -28,7 +44,7 @@ from app.earnings.sources import (
 from app.earnings.weeks import week_windows, window_for
 from app.services.providers.finnhub import Recommendation
 from app.services.providers.registry import build_providers
-from scripts import earnings_scan, setup_earnings_env
+from scripts import earnings_scan, setup_earnings_env, web_fetch
 
 
 # ---------------------------------------------------------------- weeks
@@ -323,7 +339,7 @@ async def test_mock_scan_uses_every_signal_family():
     scan = await _scan()
     seen = {s.name for r in scan.reports for s in r.signals if s.available}
     assert {"beat_history", "reaction_history", "analyst_level", "analyst_trend", "news", "insider",
-            "politicians", "institutions", "momentum", "peers", "options_skew"} <= seen  # fmt: skip
+            "politicians", "institutions", "momentum", "peers", "options_skew", "filings"} <= seen  # fmt: skip
     ko = next(r for r in scan.reports if r.ticker == "KO")
     assert ko.insiders.open_market_buys >= 2 and ko.politicians and ko.institutions and ko.headlines
 
@@ -371,7 +387,7 @@ async def test_one_failing_source_does_not_sink_the_scan():
     world, _ = _world()
 
     def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.host == "news.google.com":
+        if req.url.host == "news.google.com" or req.url.path.endswith("/company-news"):
             return httpx.Response(500, text="boom")
         return world.handle(req)
 
@@ -558,3 +574,68 @@ def test_earnings_package_contains_no_execution_language():
 
 def test_np_seed_independence_sanity():
     assert np.random.default_rng(1).random() != np.random.default_rng(2).random()
+
+
+# ---- extra sources, research packet and web fetch bridge ----
+def test_eps_parsing_and_consensus_disagreement():
+    assert _eps("$1.25") == 1.25 and _eps("($0.40)") == -0.40 and _eps("N/A") is None
+    c = build_consensus(1.00, {"eps": 1.25, "n": 7})
+    assert c and c.disagreement_pct == pytest.approx(20.0) and consensus_flag(c)
+    assert consensus_flag(build_consensus(1.0, {"eps": 1.02})) is None
+    assert build_consensus(None, None) is None
+
+
+def test_filing_tilt_only_warns_and_is_capped():
+    assert filing_tilt([]) == 0.0
+    bad = [FilingEvent(form="8-K", filed=date(2026, 9, 1), items=["4.02", "1.03"], note="")]
+    assert filing_tilt(bad) == -1.0
+    good = [FilingEvent(form="8-K", filed=date(2026, 9, 1), items=["8.01"], note="")]
+    assert filing_tilt(good) <= 0.0
+
+
+def test_short_interest_flag_threshold():
+    assert short_interest_flag(
+        ShortInterestInfo(settlement_date=date(2026, 9, 15), days_to_cover=8.0)
+    )
+    assert (
+        short_interest_flag(ShortInterestInfo(settlement_date=date(2026, 9, 15), days_to_cover=2.0))
+        is None
+    )
+    assert short_interest_flag(None) is None
+
+
+def test_merge_headlines_dedupes_and_handles_mixed_timezones():
+    a = Headline(title="Acme beats!", published_at=datetime(2026, 10, 1, 12, tzinfo=UTC))
+    b = Headline(title="acme beats", published_at=datetime(2026, 10, 2, 12))
+    c = Headline(title="Other news", published_at=datetime(2026, 10, 3, 12))
+    out = merge_headlines([a], [b, c])
+    assert [h.title for h in out] == ["Other news", "Acme beats!"]
+
+
+async def test_scan_fills_new_fields_and_packet_renders():
+    scan = await _scan()
+    r = next(x for x in scan.reports if x.ticker == "KO")
+    assert r.short_interest and r.consensus and r.filings
+    md = render_packet(scan)
+    assert "KO" in md and "Monte Carlo" in md and "NOT been backtested" in md
+    assert {"finra", "nasdaq"} <= {s.name for s in scan.sources}
+
+
+def test_web_fetch_saves_pages_and_respects_robots(tmp_path):
+    page = "<html><body><p>" + "Earnings preview. " * 40 + "</p></body></html>"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /private")
+        if req.url.path == "/thin":
+            return httpx.Response(200, text="<html><body>hi</body></html>")
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+
+    urls = ["https://x.example/ok", "https://x.example/private/a", "https://x.example/thin"]
+    res = web_fetch.fetch_all(
+        urls, tmp_path, "test-agent", delay=0, transport=httpx.MockTransport(handler)
+    )
+    assert res[0]["file"] and "Earnings preview" in (tmp_path / res[0]["file"]).read_text()
+    assert "robots" in res[1]["note"] and res[1]["file"] is None
+    assert "JavaScript" in res[2]["note"]
+    assert (tmp_path / "index.json").exists()

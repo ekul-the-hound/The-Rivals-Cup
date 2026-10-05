@@ -20,6 +20,16 @@ import numpy as np
 from app.config import Settings
 from app.config.clock import utcnow
 from app.earnings import DISCLAIMER, MODEL_VERSION, model
+from app.earnings.extra import (
+    build_consensus,
+    consensus_flag,
+    finnhub_company_news,
+    merge_headlines,
+    nasdaq_consensus,
+    sec_8k_events,
+    short_interest_flag,
+    short_interest_map,
+)
 from app.earnings.models import InsiderSummary, Scan, SourceStatus, TickerReport
 from app.earnings.montecarlo import seed_for, simulate
 from app.earnings.sources import (
@@ -52,6 +62,8 @@ SOURCES = (
     "politicians",
     "13f",
     "options",
+    "finra",
+    "nasdaq",
 )
 
 
@@ -152,6 +164,10 @@ async def select_universe(
     return chosen[:max_tickers], skipped
 
 
+async def _no_sleep(_seconds: float) -> None:
+    """Used only with an injected (offline) transport so tests do not wait on rate limits."""
+
+
 class _Context:
     def __init__(
         self,
@@ -181,6 +197,21 @@ class _Context:
         self.inst = InstitutionalFeed(
             providers.sec, settings.earnings_13f_cik_list, settings.earnings_13f_max_filings
         )
+        self.nasdaq_http = (
+            HttpClient(
+                "nasdaq",
+                user_agent=settings.effective_web_user_agent,
+                per_second=1.0,
+                **({"sleep": _no_sleep} if transport else {}),
+                timeout=settings.http_timeout_seconds,
+                cache=FileCache(cache),
+                transport=transport,
+            )
+            if settings.earnings_nasdaq_enabled
+            else None
+        )
+        self.nasdaq: dict[date, dict[str, dict[str, Any]]] = {}
+        self.short_interest: dict[str, Any] = {}
         self.bars_cache: dict[str, tuple[list[date], list[float], list[int]]] = {}
 
     async def bars(
@@ -202,7 +233,18 @@ class _Context:
         self.bars_cache[key] = out
         return out
 
+    async def load_consensus(self, days: list[date]) -> None:
+        if not self.nasdaq_http:
+            return
+        for d in sorted(set(days)):
+            res = await self.t.run("nasdaq", nasdaq_consensus(self.nasdaq_http, d))
+            if res is not None:
+                self.nasdaq[d] = res
+
     async def prepare(self) -> None:
+        if self.p.finra:
+            si = await self.t.run("finra", short_interest_map(self.p.finra, self.today))
+            self.short_interest = si or {}
         if self.p.sec:
             m = await self.t.run("sec_edgar", self.p.sec.ticker_cik_map())
             self.cik_map = m or {}
@@ -257,8 +299,18 @@ async def _evidence(ctx: _Context, ev_row: EarningsEvent) -> tuple[model.Evidenc
         if p.finnhub and s.finnhub_congress_enabled
         else none()
     )
-    bars, events, recs, news, ins, opt, cong = await asyncio.gather(
-        bars_t, hist_t, recs_t, news_t, ins_t, opt_t, cong_t
+    fnews_t = (
+        ctx.t.run("finnhub", finnhub_company_news(p.finnhub.http, fh_key, t, today))
+        if p.finnhub and s.earnings_finnhub_news_enabled
+        else none()
+    )
+    k8_t = (
+        ctx.t.run("sec_edgar", sec_8k_events(p.sec, info.cik, today, s.earnings_8k_lookback_days))
+        if p.sec and info
+        else none()
+    )
+    bars, events, recs, news, ins, opt, cong, fnews, k8 = await asyncio.gather(
+        bars_t, hist_t, recs_t, news_t, ins_t, opt_t, cong_t, fnews_t, k8_t
     )
 
     ev = model.Evidence()
@@ -276,9 +328,11 @@ async def _evidence(ctx: _Context, ev_row: EarningsEvent) -> tuple[model.Evidenc
         ev.history = history_stats(events, [], [])
     if recs:
         ev.analyst_level, ev.analyst_trend, ev.analyst_detail = analyst_scores(recs)
-    if news is not None:
-        extra["headlines"] = to_headlines(news)
+    if news is not None or fnews is not None:
+        extra["headlines"] = merge_headlines(to_headlines(news or []), fnews or [])
         ev.headlines_scores = [h.score for h in extra["headlines"]]
+    ev.filing_events = k8
+    extra["filings"] = k8 or []
     ev.insiders = ins
     pol = None
     if ctx.pol.configured and not ctx.pol.error:
@@ -323,6 +377,17 @@ def _finish(
         flags.append(f"thin liquidity: ${adv / 1e6:.1f}M average daily dollar volume")
     if not ev.history.events_used:
         flags.append("no earnings history")
+    nas = ctx.nasdaq.get(row.earnings_date, {}).get(row.ticker)
+    consensus = build_consensus(row.eps_estimate, nas)
+    si = ctx.short_interest.get(row.ticker)
+    for f in (consensus_flag(consensus), short_interest_flag(si)):
+        if f:
+            flags.append(f)
+    for e in extra.get("filings", []):
+        if e.note:
+            flags.append(f"8-K {e.filed}: {e.note}")
+    session = row.time_of_day if row.time_of_day in ("bmo", "amc", "dmh") else None
+    session = session or (nas or {}).get("session") or "unknown"
     avail = sum(x.available for x in signals)
     liquid = adv is not None and adv >= s.earnings_min_adv_usd
     solid = conf >= s.earnings_long_min_confidence and avail >= 4 and liquid
@@ -331,8 +396,8 @@ def _finish(
         name=extra.get("name"),
         report_date=row.earnings_date,
         week=week,
-        session=row.time_of_day if row.time_of_day in ("bmo", "amc", "dmh") else "unknown",
-        eps_estimate=row.eps_estimate,
+        session=session,
+        eps_estimate=row.eps_estimate if row.eps_estimate is not None else (nas or {}).get("eps"),
         revenue_estimate=row.revenue_estimate,
         price=extra.get("price"),
         adv_usd=adv,
@@ -352,6 +417,9 @@ def _finish(
         politicians=ev.politicians or [],
         institutions=ev.institutions,
         flags=flags,
+        filings=extra.get("filings", []),
+        short_interest=si,
+        consensus=consensus,
         long_candidate=bool(solid and p_up >= s.earnings_long_min_p_up and mc.mean > 0),
         short_candidate=bool(solid and p_up <= 1 - s.earnings_long_min_p_up and mc.mean < 0),
         rank_score=round(100 * mc.mean * conf, 3),
@@ -422,6 +490,7 @@ async def run_scan(
     )
     ctx = _Context(settings, providers, today, tally, transport)
     await ctx.prepare()
+    await ctx.load_consensus([k[1] for k in chosen])
     sem = asyncio.Semaphore(4)
     evidence: dict[str, tuple[model.Evidence, dict[str, Any]]] = {}
 
@@ -488,6 +557,8 @@ def _sources(s: Settings, p: Providers, ctx: _Context, t: _Tally) -> list[Source
         "politicians": ctx.pol.configured,
         "13f": ctx.inst.configured,
         "options": bool(p.yahoo and s.options_iv_enabled),
+        "finra": p.finra is not None,
+        "nasdaq": ctx.nasdaq_http is not None,
     }
     notes = {
         "finnhub": p.unavailable.get("finnhub", ""),

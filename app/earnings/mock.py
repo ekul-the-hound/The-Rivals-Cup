@@ -34,7 +34,13 @@ class EarningsMockWorld(MockWorld):
         q = {k: v[0] for k, v in parse_qs(urlparse(str(req.url)).query).items()}
         if host == "mock-politicians.example":
             return self._politicians()
+        if host == "api.nasdaq.com":
+            return self._nasdaq(q)
+        if host == "cdn.finra.org" and "shrt" in path:
+            return self._short_interest(path)
         if host == "finnhub.io":
+            if path.endswith("/company-news"):
+                return self._company_news(q.get("symbol", ""))
             if path.endswith("/calendar/earnings"):
                 return self._calendar(q)
             if "recommendation" in path:
@@ -55,6 +61,48 @@ class EarningsMockWorld(MockWorld):
         if host == "query1.finance.yahoo.com" and "chart" in path and q.get("range") == "2y":
             return self._long_history(path.rsplit("/", 1)[-1])
         return super().handle(req)
+
+    # ---- extra sources ----
+    def _nasdaq(self, q: dict) -> httpx.Response:
+        day = date.fromisoformat(q["date"])
+        rows = []
+        for t in TICKERS:
+            if self._report_date(t) == day:
+                eps = 1.0 + (_h(t, "e") % 100) / 100
+                skew = 1.0 if _h(t, "nas") % 3 else 1.25  # some names disagree with Finnhub
+                rows.append({"symbol": t, "time": ("time-pre-market", "time-after-hours")[_h(t, "h") % 2],
+                             "epsForecast": f"${eps * skew:.2f}", "noOfEsts": str(3 + _h(t, "n") % 9),
+                             "lastYearEPS": f"${eps * 0.9:.2f}"})  # fmt: skip
+        return self._json({"data": {"rows": rows}})
+
+    def _short_interest(self, path: str) -> httpx.Response:
+        d = re.search(r"(\d{8})", path).group(1)
+        rows = ["accountingYearMonthNumber,symbolCode,issueName,currentShortPositionQuantity,"
+                "previousShortPositionQuantity,changePercent,averageDailyVolumeQuantity,"
+                "daysToCoverQuantity,settlementDate"]  # fmt: skip
+        for t in TICKERS:
+            dtc = 1.5 + (_h(t, "dtc") % 80) / 10
+            rows.append(
+                f"202609,{t},Mock {t},{2_000_000 + _h(t, 's') % 5_000_000},1800000,"
+                f"{(_h(t, 'c') % 40) - 15},{800_000},{dtc:.2f},{d[:4]}-{d[4:6]}-{d[6:]}"
+            )
+        return httpx.Response(200, text="\n".join(rows))
+
+    def _company_news(self, sym: str) -> httpx.Response:
+        n = 1 + _h(sym, "cn") % 3
+        base = int(datetime.now(UTC).timestamp())
+        words = (
+            "raises guidance",
+            "faces probe",
+            "launches product",
+            "downgraded",
+            "wins contract",
+        )
+        return self._json([
+            {"headline": f"{sym} {words[(_h(sym, 'w', str(i)) % len(words))]} (mock {i})",
+             "source": "MockWire", "datetime": base - 3600 * (i + 1), "url": f"https://mock.example/{sym}/{i}"}
+            for i in range(n)
+        ])  # fmt: skip
 
     # ---- calendar & history ----
     def _monday(self) -> date:

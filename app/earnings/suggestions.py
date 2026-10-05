@@ -17,6 +17,7 @@ MISSING_SIGNAL_FIX = {
     "institutions": "13F data not matched; check SEC_USER_AGENT. Holdings are quarterly and stale.",
     "momentum": "Yahoo price history failed for this ticker.",
     "peers": "Peer read-through only runs for the top names, and needs peers that reported recently.",
+    "filings": "SEC 8-K data needs SEC_USER_AGENT set to 'Your Name your@email.com'.",
     "options_skew": "Set OPTIONS_IV_ENABLED=true to use options positioning (unofficial Yahoo data).",
 }
 
@@ -125,8 +126,8 @@ def global_suggestions(
         ),
         (
             "data",
-            "[needs data] Short interest from FINRA is already collected by the deep-dive jobs; "
-            "wiring it in would help flag squeeze setups on a beat.",
+            "[coded] FINRA short interest, SEC 8-K event risk, Finnhub company news and a Nasdaq "
+            "consensus cross-check are wired in (short interest and consensus conflicts show as flags).",
         ),
         (
             "data",

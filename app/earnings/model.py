@@ -10,6 +10,7 @@ logged predictions once reports have happened.
 import math
 from dataclasses import dataclass, field
 
+from app.earnings.extra import filing_tilt
 from app.earnings.models import (
     HistoryStats,
     InsiderSummary,
@@ -30,6 +31,7 @@ SPECS: dict[str, tuple[str, float, str]] = {
     "momentum": ("20-day momentum vs SPY", 0.10, "yahoo"),
     "peers": ("Peer read-through", 0.25, "finnhub + yahoo"),
     "options_skew": ("Options put/call skew", 0.10, "yahoo options"),
+    "filings": ("SEC 8-K event risk", 0.15, "sec 8-k"),
 }
 TOTAL_WEIGHT = sum(w for _, w, _ in SPECS.values())
 TYPICAL_BEAT_RATE = 0.74  # about three in four S&P 500 reports beat, so 75% is NOT informative
@@ -82,6 +84,7 @@ class Evidence:
     excess_20d: float | None = None
     peer_moves: list[float] = field(default_factory=list)
     put_call_ratio: float | None = None
+    filing_events: list | None = None  # None = SEC 8-K data unavailable
 
 
 def build_signals(ev: Evidence) -> list[Signal]:
@@ -229,6 +232,18 @@ def build_signals(ev: Evidence) -> list[Signal]:
         s.append(
             make_signal("options_skew", None, "options data off (set OPTIONS_IV_ENABLED=true)")
         )
+    if ev.filing_events is not None:
+        notes = [e.note for e in ev.filing_events if e.note]
+        s.append(
+            make_signal(
+                "filings",
+                filing_tilt(ev.filing_events),
+                f"{len(ev.filing_events)} 8-K filings in the window"
+                + (f"; warnings: {'; '.join(notes)}" if notes else "; none flagged"),
+            )
+        )
+    else:
+        s.append(make_signal("filings", None, "SEC 8-K data unavailable"))
     return s
 
 
