@@ -7,7 +7,7 @@ list says which model improvements are already coded in and which still need dat
 from app.earnings.models import Suggestion, TickerReport
 
 MISSING_SIGNAL_FIX = {
-    "beat_history": "Add a free FINNHUB_API_KEY: it unlocks past EPS surprises and report dates.",
+    "beat_history": "Needs past EPS surprises and report dates: set FINNHUB_API_KEY, or check the live-check output.",
     "reaction_history": "Needs Finnhub report dates plus Yahoo prices to measure past earnings-day moves.",
     "analyst_level": "Add FINNHUB_API_KEY for the analyst buy/hold/sell counts.",
     "analyst_trend": "Add FINNHUB_API_KEY; the trend needs at least two months of analyst counts.",

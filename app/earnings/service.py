@@ -37,8 +37,8 @@ from app.earnings.sources import (
     PoliticianFeed,
     analyst_scores,
     finnhub_congress,
-    finnhub_history,
     history_stats,
+    history_with_fallback,
     insider_summary,
     reaction_for,
     to_headlines,
@@ -274,7 +274,12 @@ async def _evidence(ctx: _Context, ev_row: EarningsEvent) -> tuple[model.Evidenc
 
     bars_t = ctx.bars(t)
     hist_t = (
-        ctx.t.run("finnhub", finnhub_history(p.finnhub.http, fh_key, t, today))
+        ctx.t.run(
+            "finnhub",
+            history_with_fallback(
+                p.finnhub.http, fh_key, p.sec, info.cik if info else None, t, today
+            ),
+        )
         if p.finnhub
         else none()
     )

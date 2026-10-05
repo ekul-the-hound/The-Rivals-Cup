@@ -102,7 +102,13 @@ def build_signals(ev: Evidence) -> list[Signal]:
             )
         )
     else:
-        s.append(make_signal("beat_history", None, "no earnings history (needs FINNHUB_API_KEY)"))
+        s.append(
+            make_signal(
+                "beat_history",
+                None,
+                "no earnings history (Finnhub free tier returned no past EPS; SEC fallback found none)",
+            )
+        )
 
     if h.p_up_hist is not None and h.reactions:
         r = h.reactions
@@ -230,7 +236,11 @@ def build_signals(ev: Evidence) -> list[Signal]:
         )
     else:
         s.append(
-            make_signal("options_skew", None, "options data off (set OPTIONS_IV_ENABLED=true)")
+            make_signal(
+                "options_skew",
+                None,
+                "no options data (turned off, or Yahoo returned an empty chain)",
+            )
         )
     if ev.filing_events is not None:
         notes = [e.note for e in ev.filing_events if e.note]

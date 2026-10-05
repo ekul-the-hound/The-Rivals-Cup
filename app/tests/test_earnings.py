@@ -36,6 +36,7 @@ from app.earnings.sources import (
     history_stats,
     norm_name,
     normalize_politician_record,
+    pair_surprises_with_filings,
     parse_amount_mid,
     parse_infotable,
     reaction_for,
@@ -639,3 +640,16 @@ def test_web_fetch_saves_pages_and_respects_robots(tmp_path):
     assert "robots" in res[1]["note"] and res[1]["file"] is None
     assert "JavaScript" in res[2]["note"]
     assert (tmp_path / "index.json").exists()
+
+
+def test_history_fallback_pairs_quarters_with_8k_dates():
+    rows = [
+        {"period": "2026-06-30", "actual": 1.1, "estimate": 1.0},
+        {"period": "2026-03-31", "actual": 0.9, "estimate": 1.0},
+        {"period": "2025-12-31", "actual": None, "estimate": 1.0},
+    ]
+    filings = [date(2026, 7, 22), date(2026, 4, 21), date(2026, 1, 20)]
+    ev = pair_surprises_with_filings(rows, filings)
+    assert [e["date"] for e in ev] == [date(2026, 7, 22), date(2026, 4, 21)]
+    assert ev[0]["eps_actual"] == 1.1 and ev[1]["eps_estimate"] == 1.0
+    assert pair_surprises_with_filings(rows, []) == []

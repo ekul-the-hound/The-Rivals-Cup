@@ -74,6 +74,46 @@ async def finnhub_history(http: HttpClient, key: str, ticker: str, today: date) 
     return sorted(out, key=lambda x: x["date"], reverse=True)
 
 
+def pair_surprises_with_filings(rows: list[dict], filing_dates: list[date]) -> list[dict]:
+    """Join Finnhub quarterly actual/estimate rows with SEC 8-K Item 2.02 dates.
+
+    The report date is the first earnings 8-K filed 1..100 days after the fiscal period ends.
+    """
+    out, used = [], set()
+    for r in rows:
+        period, act, est = _d(r.get("period")), r.get("actual"), r.get("estimate")
+        if not period or act is None or est is None:
+            continue
+        hit = next(
+            (d for d in sorted(filing_dates) if d not in used and 0 < (d - period).days <= 100),
+            None,
+        )
+        if hit:
+            used.add(hit)
+            out.append({"date": hit, "hour": "", "eps_actual": act, "eps_estimate": est})
+    return sorted(out, key=lambda x: x["date"], reverse=True)
+
+
+async def history_with_fallback(
+    http: HttpClient, key: str, sec: Any, cik: int | None, ticker: str, today: date
+) -> list[dict]:
+    """Finnhub calendar history; if the free tier returns no actuals, rebuild it from
+    Finnhub /stock/earnings (last quarters) plus SEC 8-K Item 2.02 report dates."""
+    events = await finnhub_history(http, key, ticker, today)
+    if any(e["eps_actual"] is not None and e["eps_estimate"] is not None for e in events):
+        return events
+    if sec is None or cik is None:
+        return events
+    rows = await http.get_json(
+        f"{FINNHUB}/stock/earnings",
+        params={"symbol": ticker, "limit": 8, "token": key},
+        ttl=12 * 3600,
+    )
+    filings = await sec.recent_filings(cik, since=today - timedelta(days=800), forms=("8-K",))
+    dates = [f.filed_at for f in filings if "2.02" in f.items]
+    return pair_surprises_with_filings(rows if isinstance(rows, list) else [], dates) or events
+
+
 def reaction_for(
     event_date: date, hour: str, dates: list[date], closes: list[float]
 ) -> float | None:
